@@ -12,6 +12,7 @@ import (
 
 	"github.com/parradam/attrape/internal/httpapi"
 	"github.com/parradam/attrape/internal/store"
+	"github.com/parradam/attrape/web"
 )
 
 func main() {
@@ -33,7 +34,7 @@ func run() error {
 
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           httpapi.New(st),
+		Handler:           httpapi.New(st, web.Dist()),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
