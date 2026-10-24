@@ -14,6 +14,9 @@ export function Checkbox({ checked, label, onToggle }: Props) {
       role="checkbox"
       aria-checked={checked}
       aria-label={label}
+      // Keep presses away from the row, which would select, open or swipe it.
+      onPointerDown={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation();
         onToggle();

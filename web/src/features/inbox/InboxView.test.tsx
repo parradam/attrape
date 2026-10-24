@@ -179,3 +179,106 @@ test("the checkbox completes a task, which stays struck through", async () => {
   expect(screen.getByRole("checkbox", { name: "Complete “Buy milk”" }).getAttribute("aria-checked")).toBe("true");
   expect(screen.getByText("Buy milk").className).toContain("line-through");
 });
+
+function selectedTitle() {
+  return screen
+    .getAllByRole("listitem")
+    .find((li) => li.getAttribute("aria-selected") === "true")?.textContent;
+}
+
+test("j/k and arrow keys move the selection", async () => {
+  await renderInbox();
+  expect(selectedTitle()).toBeUndefined();
+
+  fireEvent.keyDown(window, { key: "j" });
+  expect(selectedTitle()).toBe("Buy milk");
+  fireEvent.keyDown(window, { key: "ArrowDown" });
+  expect(selectedTitle()).toBe("Call the bank");
+  fireEvent.keyDown(window, { key: "j" });
+  expect(selectedTitle()).toBe("Call the bank");
+  fireEvent.keyDown(window, { key: "k" });
+  expect(selectedTitle()).toBe("Buy milk");
+  fireEvent.keyDown(window, { key: "ArrowUp" });
+  expect(selectedTitle()).toBe("Buy milk");
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(selectedTitle()).toBeUndefined();
+});
+
+test("clicking a task selects it and clicking elsewhere clears it", async () => {
+  await renderInbox();
+  fireEvent.click(screen.getByText("Call the bank"));
+  expect(selectedTitle()).toBe("Call the bank");
+  fireEvent.click(screen.getByRole("main"));
+  expect(selectedTitle()).toBeUndefined();
+});
+
+test("x completes and reopens the selected task", async () => {
+  vi.spyOn(tasksApi, "complete").mockResolvedValue(task(2, "Call the bank", { status: "done" }));
+  vi.spyOn(tasksApi, "reopen").mockResolvedValue(task(2, "Call the bank"));
+  await renderInbox();
+
+  fireEvent.click(screen.getByText("Call the bank"));
+  await act(async () => {
+    fireEvent.keyDown(window, { key: "x" });
+  });
+  expect(tasksApi.complete).toHaveBeenCalledWith(2);
+  expect(screen.getByText("Call the bank").className).toContain("line-through");
+
+  await act(async () => {
+    fireEvent.keyDown(window, { key: "x" });
+  });
+  expect(tasksApi.reopen).toHaveBeenCalledWith(2);
+  expect(screen.getByText("Call the bank").className).not.toContain("line-through");
+});
+
+test("x does nothing with no selection", async () => {
+  vi.spyOn(tasksApi, "complete");
+  await renderInbox();
+  fireEvent.keyDown(window, { key: "x" });
+  expect(tasksApi.complete).not.toHaveBeenCalled();
+});
+
+test("Enter opens the selected task for editing", async () => {
+  await renderInbox();
+  fireEvent.click(screen.getByText("Buy milk"));
+  fireEvent.keyDown(window, { key: "Enter" });
+  expect((screen.getByLabelText("Title") as HTMLInputElement).value).toBe("Buy milk");
+});
+
+test("a failed completion is put back", async () => {
+  vi.spyOn(tasksApi, "complete").mockRejectedValue(new ApiError("something went wrong", 500));
+  await renderInbox();
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole("checkbox", { name: "Complete “Buy milk”" }));
+  });
+
+  expect(screen.getByText("Buy milk").className).not.toContain("line-through");
+  expect(screen.getByRole("alert").textContent).toBe("Something went wrong.");
+});
+
+test("swiping right completes a task", async () => {
+  vi.spyOn(tasksApi, "complete").mockResolvedValue(task(1, "Buy milk", { status: "done" }));
+  await renderInbox();
+
+  const row = screen.getByText("Buy milk").closest("li")!;
+  const p = { pointerType: "touch", pointerId: 1, clientY: 10 };
+  await act(async () => {
+    fireEvent.pointerDown(row, { ...p, clientX: 10 });
+    fireEvent.pointerMove(row, { ...p, clientX: 60 });
+    fireEvent.pointerMove(row, { ...p, clientX: 120 });
+    fireEvent.pointerUp(row, { ...p, clientX: 120 });
+  });
+
+  expect(tasksApi.complete).toHaveBeenCalledWith(1);
+  expect(screen.getByText("Buy milk").className).toContain("line-through");
+});
+
+test("tapping a task on a touch screen opens it", async () => {
+  await renderInbox();
+  const row = screen.getByText("Buy milk").closest("li")!;
+  const p = { pointerType: "touch", pointerId: 1, clientX: 10, clientY: 10 };
+  fireEvent.pointerDown(row, p);
+  fireEvent.pointerUp(row, p);
+  expect((screen.getByLabelText("Title") as HTMLInputElement).value).toBe("Buy milk");
+});
