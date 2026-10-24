@@ -48,6 +48,16 @@ func TestNewTask(t *testing.T) {
 	}
 }
 
+func TestTimestampsAreUTCMicroseconds(t *testing.T) {
+	task, err := NewTask("Buy milk", "", t0.Add(1500*time.Nanosecond))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := t0.Add(time.Microsecond); !task.CreatedAt.Equal(want) {
+		t.Errorf("created_at = %v, want %v", task.CreatedAt, want)
+	}
+}
+
 func TestNewTaskStoresUTC(t *testing.T) {
 	london, err := time.LoadLocation("Europe/London")
 	if err != nil {

@@ -40,7 +40,7 @@ func NewTask(title, description string, now time.Time) (Task, error) {
 	if err != nil {
 		return Task{}, err
 	}
-	now = now.UTC()
+	now = stamp(now)
 	return Task{
 		Title:       title,
 		Description: description,
@@ -58,7 +58,7 @@ func (t *Task) Edit(title, description string, now time.Time) error {
 	}
 	t.Title = title
 	t.Description = description
-	t.UpdatedAt = now.UTC()
+	t.UpdatedAt = stamp(now)
 	return nil
 }
 
@@ -67,7 +67,7 @@ func (t *Task) Complete(now time.Time) {
 	if t.Status == StatusDone {
 		return
 	}
-	now = now.UTC()
+	now = stamp(now)
 	t.Status = StatusDone
 	t.CompletedAt = &now
 	t.UpdatedAt = now
@@ -80,7 +80,13 @@ func (t *Task) Reopen(now time.Time) {
 	}
 	t.Status = StatusOpen
 	t.CompletedAt = nil
-	t.UpdatedAt = now.UTC()
+	t.UpdatedAt = stamp(now)
+}
+
+// stamp returns now in UTC to the microsecond, the precision timestamps are
+// stored at, so a task looks the same before and after it's saved.
+func stamp(now time.Time) time.Time {
+	return now.UTC().Truncate(time.Microsecond)
 }
 
 func cleanTitle(title string) (string, error) {
