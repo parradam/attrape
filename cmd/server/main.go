@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/parradam/attrape/internal/httpapi"
+	"github.com/parradam/attrape/internal/store"
 )
 
 func main() {
@@ -22,6 +23,13 @@ func main() {
 
 func run() error {
 	addr := env("ADDR", ":8080")
+	dbPath := env("DB_PATH", "data/attrape.db")
+
+	st, err := store.Open(dbPath)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
 
 	srv := &http.Server{
 		Addr:              addr,
