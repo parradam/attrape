@@ -12,6 +12,7 @@ import { TaskRow } from "../tasks/TaskRow";
 export function InboxView() {
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [error, setError] = useState("");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [capturing, setCapturing] = useState(false);
 
@@ -19,7 +20,26 @@ export function InboxView() {
     tasksApi.inbox().then(setTasks, (err) => setError(errorMessage(err)));
   }, []);
 
-  useShortcuts({ q: () => setCapturing(true) });
+  // Move the selection by step, starting from the top if nothing is selected.
+  function move(step: number) {
+    if (!tasks?.length) return;
+    const i = tasks.findIndex((t) => t.id === selectedId);
+    const next = i === -1 ? 0 : Math.min(Math.max(i + step, 0), tasks.length - 1);
+    setSelectedId(tasks[next].id);
+  }
+
+  const selected = tasks?.find((t) => t.id === selectedId);
+
+  useShortcuts({
+    q: () => setCapturing(true),
+    j: () => move(1),
+    k: () => move(-1),
+    ArrowDown: () => move(1),
+    ArrowUp: () => move(-1),
+    x: () => selected && toggle(selected),
+    Enter: () => selected && setEditingId(selected.id),
+    Escape: () => setSelectedId(null),
+  });
 
   function replace(task: Task) {
     setTasks((ts) => ts?.map((t) => (t.id === task.id ? task : t)) ?? null);
@@ -43,47 +63,56 @@ export function InboxView() {
   }
 
   return (
-    <main className="mx-auto max-w-2xl px-4 pt-[calc(3rem+env(safe-area-inset-top))] pb-28 md:px-8 md:pt-16">
-      <h1 className="mb-6 flex items-center gap-2.5 px-3 text-[28px] font-bold tracking-tight">
-        <InboxIcon className="size-7 text-accent" />
-        Inbox
-      </h1>
+    // Clicking anywhere outside a task clears the selection.
+    <div
+      className="min-h-dvh"
+      onClick={(e) => !(e.target as Element).closest("li") && setSelectedId(null)}
+    >
+      <main className="mx-auto max-w-2xl px-4 pt-[calc(3rem+env(safe-area-inset-top))] pb-28 md:px-8 md:pt-16">
+        <h1 className="mb-6 flex items-center gap-2.5 px-3 text-[28px] font-bold tracking-tight">
+          <InboxIcon className="size-7 text-accent" />
+          Inbox
+        </h1>
 
-      {error && (
-        <p role="alert" className="mx-3 mb-4 rounded-row bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </p>
-      )}
+        {error && (
+          <p role="alert" className="mx-3 mb-4 rounded-row bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </p>
+        )}
 
-      {tasks?.length === 0 && (
-        <p className="px-3 pt-16 text-center text-muted">Nothing in your Inbox.</p>
-      )}
+        {tasks?.length === 0 && (
+          <p className="px-3 pt-16 text-center text-muted">Nothing in your Inbox.</p>
+        )}
 
-      <ul>
-        {tasks?.map((task) => (
-          <TaskRow
-            key={task.id}
-            task={task}
-            editing={editingId === task.id}
-            onToggle={() => toggle(task)}
-            onOpen={() => setEditingId(task.id)}
-            onSave={(changes) => save(task, changes)}
-            onClose={() => setEditingId(null)}
+        <ul aria-label="Inbox">
+          {tasks?.map((task) => (
+            <TaskRow
+              key={task.id}
+              task={task}
+              selected={selectedId === task.id}
+              editing={editingId === task.id}
+              onSelect={() => setSelectedId(task.id)}
+              onToggle={() => toggle(task)}
+              onOpen={() => setEditingId(task.id)}
+              onSave={(changes) => save(task, changes)}
+              onClose={() => setEditingId(null)}
+            />
+          ))}
+        </ul>
+
+        <AddButton onClick={() => setCapturing(true)} />
+
+        {capturing && (
+          <QuickCapture
+            onClose={() => setCapturing(false)}
+            onCreated={(task) => {
+              setTasks((ts) => [...(ts ?? []), task]);
+              setSelectedId(task.id);
+              setCapturing(false);
+            }}
           />
-        ))}
-      </ul>
-
-      <AddButton onClick={() => setCapturing(true)} />
-
-      {capturing && (
-        <QuickCapture
-          onClose={() => setCapturing(false)}
-          onCreated={(task) => {
-            setTasks((ts) => [...(ts ?? []), task]);
-            setCapturing(false);
-          }}
-        />
-      )}
-    </main>
+        )}
+      </main>
+    </div>
   );
 }

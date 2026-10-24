@@ -1,11 +1,15 @@
-import { useState, type FocusEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
 import { errorMessage } from "../../api/client";
 import type { Task } from "../../api/tasks";
+import { SWIPE_THRESHOLD, useSwipe } from "../../hooks/useSwipe";
 import { Checkbox } from "../../components/Checkbox";
+import { TickIcon } from "../../components/icons";
 
 type Props = {
   task: Task;
+  selected: boolean;
   editing: boolean;
+  onSelect: () => void;
   onToggle: () => void;
   onOpen: () => void;
   onSave: (changes: { title: string; description: string }) => Promise<void>;
@@ -13,8 +17,15 @@ type Props = {
 };
 
 // TaskRow is one task in a list. Opening it expands it into an editing card.
-export function TaskRow({ task, editing, onToggle, onOpen, onSave, onClose }: Props) {
+// On touch screens a tap opens it and a swipe right completes or reopens it.
+export function TaskRow({ task, selected, editing, onSelect, onToggle, onOpen, onSave, onClose }: Props) {
   const done = task.status === "done";
+  const ref = useRef<HTMLLIElement>(null);
+  const { offset, handlers } = useSwipe({ onSwipe: onToggle, onTap: onOpen });
+
+  useEffect(() => {
+    if (selected) ref.current?.scrollIntoView?.({ block: "nearest" });
+  }, [selected]);
 
   if (editing) {
     return <TaskEditor task={task} onToggle={onToggle} onSave={onSave} onClose={onClose} />;
@@ -22,23 +33,40 @@ export function TaskRow({ task, editing, onToggle, onOpen, onSave, onClose }: Pr
 
   return (
     <li
+      ref={ref}
+      aria-selected={selected}
+      onClick={onSelect}
       onDoubleClick={onOpen}
-      onPointerUp={(e) => e.pointerType === "touch" && onOpen()}
-      className="flex cursor-default items-center gap-3 rounded-row px-3 py-[7px] select-none"
+      {...handlers}
+      className="relative cursor-default touch-pan-y overflow-hidden rounded-row select-none"
     >
-      <Checkbox checked={done} label={`Complete “${task.title}”`} onToggle={onToggle} />
-      <span
-        className={`min-w-0 flex-1 truncate text-[15px] transition-colors ${
-          done ? "text-muted line-through" : ""
-        }`}
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 flex items-center bg-accent pl-4 text-white"
+        style={{ opacity: Math.min(offset / SWIPE_THRESHOLD, 1) }}
       >
-        {task.title}
-      </span>
+        <TickIcon className="size-5" />
+      </div>
+      <div
+        className={`relative flex items-center gap-3 px-3 py-[7px] ${
+          selected ? "bg-accent-soft" : "bg-canvas"
+        } ${offset === 0 ? "transition-transform" : ""}`}
+        style={{ transform: `translateX(${offset}px)` }}
+      >
+        <Checkbox checked={done} label={`Complete “${task.title}”`} onToggle={onToggle} />
+        <span
+          className={`min-w-0 flex-1 truncate text-[15px] transition-colors ${
+            done ? "text-muted line-through" : ""
+          }`}
+        >
+          {task.title}
+        </span>
+      </div>
     </li>
   );
 }
 
-type EditorProps = Omit<Props, "editing" | "onOpen">;
+type EditorProps = Pick<Props, "task" | "onToggle" | "onSave" | "onClose">;
 
 function TaskEditor({ task, onToggle, onSave, onClose }: EditorProps) {
   const [title, setTitle] = useState(task.title);
