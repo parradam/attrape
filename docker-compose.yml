@@ -1,0 +1,13 @@
+services:
+  attrape:
+    build: .
+    restart: unless-stopped
+    # There's no login, so only listen where you mean to. The default is
+    # localhost; set BIND_ADDR to the VPN interface's address on the VPS.
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:8080:8080"
+    volumes:
+      - data:/data
+
+volumes:
+  data:
