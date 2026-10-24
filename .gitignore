@@ -4,3 +4,4 @@ node_modules/
 # Built by `just build`; .gitkeep stays so go:embed always has a directory.
 /web/dist/*
 !/web/dist/.gitkeep
+*.swp

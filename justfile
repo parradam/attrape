@@ -12,6 +12,16 @@ build: deps
     cd web && npm run build
     CGO_ENABLED=0 go build -o bin/attrape ./cmd/server
 
+# Check formatting, lint rules and types for Go and the web app
+lint: deps
+    golangci-lint run
+    cd web && npm run lint
+
+# Fix formatting and auto-fixable lint issues
+fmt: deps
+    golangci-lint fmt
+    cd web && npm run fmt
+
 # Install web dependencies when the lockfile has changed
 [private]
 deps:

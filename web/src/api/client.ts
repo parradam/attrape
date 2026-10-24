@@ -15,9 +15,10 @@ export async function request<T>(method: string, path: string, body?: unknown): 
     headers: body === undefined ? undefined : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const data = await res.json().catch(() => ({}));
+  const data: unknown = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new ApiError(data.error ?? "something went wrong", res.status);
+    const { error } = data as { error?: string };
+    throw new ApiError(error ?? "something went wrong", res.status);
   }
   return data as T;
 }

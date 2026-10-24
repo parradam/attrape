@@ -1,0 +1,21 @@
+version: "2"
+
+linters:
+  # errcheck, govet, ineffassign, staticcheck, unused
+  default: standard
+  settings:
+    errcheck:
+      # Deferred cleanups whose errors can't be acted on: rows.Err() and
+      # tx.Commit() report the failures that matter.
+      exclude-functions:
+        - (*database/sql.Rows).Close
+        - (*database/sql.Tx).Rollback
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/parradam/attrape

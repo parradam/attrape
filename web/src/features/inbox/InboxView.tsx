@@ -17,7 +17,7 @@ export function InboxView() {
   const [capturing, setCapturing] = useState(false);
 
   useEffect(() => {
-    tasksApi.inbox().then(setTasks, (err) => setError(errorMessage(err)));
+    tasksApi.inbox().then(setTasks, (err: unknown) => setError(errorMessage(err)));
   }, []);
 
   // Move the selection by step, starting from the top if nothing is selected.
@@ -36,7 +36,7 @@ export function InboxView() {
     k: () => move(-1),
     ArrowDown: () => move(1),
     ArrowUp: () => move(-1),
-    x: () => selected && toggle(selected),
+    x: () => selected && void toggle(selected),
     Enter: () => selected && setEditingId(selected.id),
     Escape: () => setSelectedId(null),
   });
@@ -75,7 +75,10 @@ export function InboxView() {
         </h1>
 
         {error && (
-          <p role="alert" className="mx-3 mb-4 rounded-row bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p
+            role="alert"
+            className="mx-3 mb-4 rounded-row bg-red-50 px-3 py-2 text-sm text-red-700"
+          >
             {error}
           </p>
         )}
@@ -92,7 +95,7 @@ export function InboxView() {
               selected={selectedId === task.id}
               editing={editingId === task.id}
               onSelect={() => setSelectedId(task.id)}
-              onToggle={() => toggle(task)}
+              onToggle={() => void toggle(task)}
               onOpen={() => setEditingId(task.id)}
               onSave={(changes) => save(task, changes)}
               onClose={() => setEditingId(null)}

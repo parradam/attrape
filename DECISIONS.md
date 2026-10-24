@@ -56,3 +56,19 @@ Choices that would be expensive to reverse. Never rewrite an entry; add a new on
 ## 2026-10-24: Frontend folders by role, then by feature
 **Decision:** `web/src` is split into `api/`, `components/`, `hooks/` and `features/<name>/`. Imports point one way: features use the other three, never the reverse. See ARCHITECTURE.md for the rules.
 **Why:** New views, such as Today and projects, slot in as feature folders and reuse the shared pieces.
+
+## 2026-10-24: Linting and formatting
+**Decision:** `just lint` checks everything and `just fmt` fixes what it can.
+- **Go:** golangci-lint v2 (`.golangci.yml`) with the standard linters (errcheck, govet, ineffassign, staticcheck, unused) and the gofmt/goimports formatters. staticcheck's SA1019 covers deprecated APIs. It's installed as a binary, like `just`, not added to `go.mod`.
+- **Web:** ESLint with typescript-eslint's `strictTypeChecked` preset, react-hooks and eslint-plugin-better-tailwindcss.
+  - The strict preset is needed for `no-deprecated`: `tsc` never reports deprecated APIs as errors, and the recommended preset leaves the rule out. Two of its rules are relaxed for common React patterns: `no-confusing-void-expression` allows arrow shorthand (`onClick={() => setOpen(true)}`), and `restrict-template-expressions` allows numbers (`/api/tasks/${id}`).
+  - The Tailwind plugin catches non-canonical classes such as `size-[18px]` → `size-4.5`, plus unknown, duplicate and conflicting classes. `rootFontSize: 16` matches the VS Code Tailwind extension.
+- **Formatting:** Prettier with prettier-plugin-tailwindcss formats TS, CSS, JSON and HTML in `web/`, and owns Tailwind class order. The overlapping ESLint order and line-wrapping rules are off.
+
+**Why:** Catch in the terminal what the editor shows, for every language in the repo.
+**Alternatives:** Biome is one tool, but it can't check canonical Tailwind classes.
+
+## 2026-10-24: TypeScript pinned to 6.0
+**Decision:** `typescript` is pinned to `~6.0.3`, down from 7.0.2.
+**Why:** typescript-eslint supports only TypeScript below 6.1, with no release for 7 yet. The language is the same; 7 is mainly a faster compiler.
+**Revisit when:** typescript-eslint supports TypeScript 7.

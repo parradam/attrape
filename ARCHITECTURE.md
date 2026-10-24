@@ -13,7 +13,8 @@ internal/httpapi/    HTTP handlers: decode a request, call domain and store, enc
 web/                 React app (see Frontend below)
   embed.go           embeds web/dist into the Go binary
 specs/               specs and plans for each piece of work
-justfile             dev, test and build commands
+justfile             dev, test, lint, fmt and build commands
+.golangci.yml        Go lint and format config (web lint config is in web/eslint.config.js, web/.prettierrc.json)
 ```
 
 ## Frontend
@@ -31,6 +32,7 @@ web/src/
   features/
     tasks/           task UI any view can reuse: TaskRow (and its inline editor), QuickCapture
     inbox/           InboxView: loads the Inbox, owns selection, editing and capture state
+  test/setup.ts      Vitest setup: stubs DOM methods jsdom lacks (e.g. scrollIntoView)
 ```
 
 Rules for where code goes:
@@ -70,5 +72,7 @@ One table, `tasks`, created by `001_tasks.sql`. Timestamps are UTC text at fixed
 
 - `just dev`: Vite on :5173, proxying `/api` to Go on :8080. The database is `./data/attrape.db`.
 - `just test`: Go tests, then Vitest.
+- `just lint`: golangci-lint for Go, then `tsc`, ESLint (including Tailwind class checks) and Prettier for `web/`.
+- `just fmt`: applies golangci-lint's formatters, ESLint fixes and Prettier.
 - `just build`: builds the web app, then `bin/attrape` with the app embedded.
 - `docker compose up`: distroless image. Data is in the `data` volume at `/data`, and the server listens on `127.0.0.1:8080` unless `BIND_ADDR` is set.

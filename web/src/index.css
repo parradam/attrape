@@ -2,7 +2,9 @@
 
 /* Shared look for every view: one blue accent, soft greys, generous radius. */
 @theme {
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
 
   --color-accent: #2f7cf6;
   --color-accent-soft: #e3eefe;
@@ -19,5 +21,5 @@
 }
 
 body {
-  @apply bg-canvas text-ink font-sans antialiased;
+  @apply bg-canvas font-sans text-ink antialiased;
 }

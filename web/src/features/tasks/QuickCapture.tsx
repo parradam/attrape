@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import { useState, type KeyboardEvent, type SubmitEvent } from "react";
 import { errorMessage } from "../../api/client";
 import { tasksApi, type Task } from "../../api/tasks";
 
@@ -14,7 +14,7 @@ export function QuickCapture({ onCreated, onClose }: Props) {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
-  async function save(e?: FormEvent) {
+  async function save(e?: SubmitEvent) {
     e?.preventDefault();
     if (saving) return;
     setSaving(true);
@@ -31,7 +31,7 @@ export function QuickCapture({ onCreated, onClose }: Props) {
       e.preventDefault();
       onClose();
     } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-      save();
+      void save();
     }
   }
 
@@ -43,7 +43,7 @@ export function QuickCapture({ onCreated, onClose }: Props) {
       <form
         role="dialog"
         aria-label="New task"
-        onSubmit={save}
+        onSubmit={(e) => void save(e)}
         onKeyDown={onKeyDown}
         className="w-full max-w-lg rounded-card bg-surface p-4 shadow-card"
       >
