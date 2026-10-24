@@ -35,6 +35,12 @@ async function renderInbox() {
   await screen.findByText("Buy milk");
 }
 
+function rowOf(title: string): HTMLElement {
+  const row = screen.getByText(title).closest("li");
+  if (!row) throw new Error(`no row for ${title}`);
+  return row;
+}
+
 function titles() {
   return within(screen.getByRole("list"))
     .getAllByRole("listitem")
@@ -121,7 +127,7 @@ test("a blank title on edit shows the error and keeps the old title", async () =
   });
 
   expect(screen.getByRole("alert").textContent).toBe("Title is required.");
-  expect((screen.getByLabelText("Title") as HTMLInputElement).value).toBe("Buy milk");
+  expect(screen.getByLabelText<HTMLInputElement>("Title").value).toBe("Buy milk");
 });
 
 test("Escape saves and closes an edit", async () => {
@@ -176,14 +182,15 @@ test("the checkbox completes a task, which stays struck through", async () => {
   });
 
   expect(tasksApi.complete).toHaveBeenCalledWith(1);
-  expect(screen.getByRole("checkbox", { name: "Complete “Buy milk”" }).getAttribute("aria-checked")).toBe("true");
+  expect(
+    screen.getByRole("checkbox", { name: "Complete “Buy milk”" }).getAttribute("aria-checked"),
+  ).toBe("true");
   expect(screen.getByText("Buy milk").className).toContain("line-through");
 });
 
 function selectedTitle() {
-  return screen
-    .getAllByRole("listitem")
-    .find((li) => li.getAttribute("aria-selected") === "true")?.textContent;
+  return screen.getAllByRole("listitem").find((li) => li.getAttribute("aria-selected") === "true")
+    ?.textContent;
 }
 
 test("j/k and arrow keys move the selection", async () => {
@@ -242,7 +249,7 @@ test("Enter opens the selected task for editing", async () => {
   await renderInbox();
   fireEvent.click(screen.getByText("Buy milk"));
   fireEvent.keyDown(window, { key: "Enter" });
-  expect((screen.getByLabelText("Title") as HTMLInputElement).value).toBe("Buy milk");
+  expect(screen.getByLabelText<HTMLInputElement>("Title").value).toBe("Buy milk");
 });
 
 test("a failed completion is put back", async () => {
@@ -261,7 +268,7 @@ test("swiping right completes a task", async () => {
   vi.spyOn(tasksApi, "complete").mockResolvedValue(task(1, "Buy milk", { status: "done" }));
   await renderInbox();
 
-  const row = screen.getByText("Buy milk").closest("li")!;
+  const row = rowOf("Buy milk");
   const p = { pointerType: "touch", pointerId: 1, clientY: 10 };
   await act(async () => {
     fireEvent.pointerDown(row, { ...p, clientX: 10 });
@@ -276,9 +283,9 @@ test("swiping right completes a task", async () => {
 
 test("tapping a task on a touch screen opens it", async () => {
   await renderInbox();
-  const row = screen.getByText("Buy milk").closest("li")!;
+  const row = rowOf("Buy milk");
   const p = { pointerType: "touch", pointerId: 1, clientX: 10, clientY: 10 };
   fireEvent.pointerDown(row, p);
   fireEvent.pointerUp(row, p);
-  expect((screen.getByLabelText("Title") as HTMLInputElement).value).toBe("Buy milk");
+  expect(screen.getByLabelText<HTMLInputElement>("Title").value).toBe("Buy milk");
 });

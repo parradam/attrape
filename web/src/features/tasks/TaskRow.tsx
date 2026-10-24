@@ -18,13 +18,22 @@ type Props = {
 
 // TaskRow is one task in a list. Opening it expands it into an editing card.
 // On touch screens a tap opens it and a swipe right completes or reopens it.
-export function TaskRow({ task, selected, editing, onSelect, onToggle, onOpen, onSave, onClose }: Props) {
+export function TaskRow({
+  task,
+  selected,
+  editing,
+  onSelect,
+  onToggle,
+  onOpen,
+  onSave,
+  onClose,
+}: Props) {
   const done = task.status === "done";
   const ref = useRef<HTMLLIElement>(null);
   const { offset, handlers } = useSwipe({ onSwipe: onToggle, onTap: onOpen });
 
   useEffect(() => {
-    if (selected) ref.current?.scrollIntoView?.({ block: "nearest" });
+    if (selected) ref.current?.scrollIntoView({ block: "nearest" });
   }, [selected]);
 
   if (editing) {
@@ -48,7 +57,7 @@ export function TaskRow({ task, selected, editing, onSelect, onToggle, onOpen, o
         <TickIcon className="size-5" />
       </div>
       <div
-        className={`relative flex items-center gap-3 px-3 py-[7px] ${
+        className={`relative flex items-center gap-3 px-3 py-1.75 ${
           selected ? "bg-accent-soft" : "bg-canvas"
         } ${offset === 0 ? "transition-transform" : ""}`}
         style={{ transform: `translateX(${offset}px)` }}
@@ -89,7 +98,7 @@ function TaskEditor({ task, onToggle, onSave, onClose }: EditorProps) {
   }
 
   function onBlur(e: FocusEvent) {
-    if (!e.currentTarget.contains(e.relatedTarget)) save();
+    if (!e.currentTarget.contains(e.relatedTarget)) void save();
   }
 
   function onKeyDown(e: KeyboardEvent) {
@@ -97,7 +106,7 @@ function TaskEditor({ task, onToggle, onSave, onClose }: EditorProps) {
     const enterSaves = e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey;
     if (e.key === "Escape" || (e.key === "Enter" && enterSaves)) {
       e.preventDefault();
-      save();
+      void save();
     }
   }
 
@@ -130,10 +139,10 @@ function TaskEditor({ task, onToggle, onSave, onClose }: EditorProps) {
         rows={3}
         value={description}
         onChange={(e) => setDescription(e.target.value)}
-        className="mt-2 w-full resize-none bg-transparent pl-[30px] text-sm text-ink/80 outline-none placeholder:text-muted"
+        className="mt-2 w-full resize-none bg-transparent pl-7.5 text-sm text-ink/80 outline-none placeholder:text-muted"
       />
       {error && (
-        <p role="alert" className="pl-[30px] text-sm text-red-600">
+        <p role="alert" className="pl-7.5 text-sm text-red-600">
           {error}
         </p>
       )}

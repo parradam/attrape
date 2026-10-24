@@ -3,6 +3,7 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -29,8 +30,7 @@ func Open(path string) (*Store, error) {
 	db.SetMaxOpenConns(1)
 
 	if err := migrate(db); err != nil {
-		db.Close()
-		return nil, err
+		return nil, errors.Join(err, db.Close())
 	}
 	return &Store{db: db}, nil
 }

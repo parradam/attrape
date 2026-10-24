@@ -21,7 +21,7 @@ export function Checkbox({ checked, label, onToggle }: Props) {
         e.stopPropagation();
         onToggle();
       }}
-      className={`grid size-[18px] shrink-0 place-items-center rounded-full border-[1.5px] transition-colors ${
+      className={`grid size-4.5 shrink-0 place-items-center rounded-full border-[1.5px] transition-colors ${
         checked
           ? "border-accent bg-accent text-white"
           : "border-muted/70 bg-surface hover:border-accent"

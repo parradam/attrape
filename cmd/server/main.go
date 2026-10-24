@@ -30,7 +30,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer func() {
+		if err := st.Close(); err != nil {
+			slog.Error("closing store", "err", err)
+		}
+	}()
 
 	srv := &http.Server{
 		Addr:              addr,

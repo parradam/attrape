@@ -16,14 +16,20 @@ func TestMigrationsApplyCleanly(t *testing.T) {
 	if want == 0 {
 		t.Fatal("user_version = 0 after migrating, want > 0")
 	}
-	s.Close()
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Reopening must not re-run migrations.
 	s, err = Open(path)
 	if err != nil {
 		t.Fatalf("second open: %v", err)
 	}
-	defer s.Close()
+	t.Cleanup(func() {
+		if err := s.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	if got := userVersion(t, s); got != want {
 		t.Fatalf("user_version = %d after reopen, want %d", got, want)
 	}

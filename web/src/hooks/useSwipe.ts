@@ -48,7 +48,10 @@ export function useSwipe({ onSwipe, onTap }: Options) {
       },
       onPointerUp(e: PointerEvent) {
         const s = start.current;
-        if (!s || s.id !== e.pointerId) return reset();
+        if (!s || s.id !== e.pointerId) {
+          reset();
+          return;
+        }
         const dx = e.clientX - s.x;
         const dy = e.clientY - s.y;
         if (horizontal.current && dx >= SWIPE_THRESHOLD) onSwipe();

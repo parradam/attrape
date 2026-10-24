@@ -31,6 +31,7 @@ func spa(files fs.FS) http.Handler {
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
-		w.Write(index)
+		// A failed write means the client has gone; there's nothing to do.
+		_, _ = w.Write(index)
 	})
 }

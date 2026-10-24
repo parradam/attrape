@@ -21,3 +21,7 @@
 - `just dev`: run locally
 - `just test`: run all tests
 - `just build`: production build
+- `just lint`: check formatting, lint rules and types (Go, TypeScript, Tailwind, CSS, JSON)
+- `just fmt`: fix formatting and auto-fixable lint issues
+
+Run `just lint` and `just test` before each commit; both must pass.

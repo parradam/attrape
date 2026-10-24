@@ -19,7 +19,11 @@ func newTestHandler(t *testing.T) http.Handler {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { st.Close() })
+	t.Cleanup(func() {
+		if err := st.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	return New(st, fstest.MapFS{"index.html": {Data: []byte("<html>app</html>")}})
 }
 

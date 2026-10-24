@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useEffectEvent } from "react";
 
 export type Shortcuts = Partial<Record<string, (e: KeyboardEvent) => void>>;
 
@@ -11,18 +11,16 @@ export function isTyping(target: EventTarget | null): boolean {
 // useShortcuts calls the handler for e.key on keydown anywhere in the page.
 // Keys are ignored while typing in a field or with a modifier held.
 export function useShortcuts(shortcuts: Shortcuts) {
-  const ref = useRef(shortcuts);
-  ref.current = shortcuts;
+  const onKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
+    const handler = shortcuts[e.key];
+    if (handler) {
+      e.preventDefault();
+      handler(e);
+    }
+  });
 
   useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
-      const handler = ref.current[e.key];
-      if (handler) {
-        e.preventDefault();
-        handler(e);
-      }
-    }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
