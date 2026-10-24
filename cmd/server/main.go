@@ -33,7 +33,7 @@ func run() error {
 
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           httpapi.New(),
+		Handler:           httpapi.New(st),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
