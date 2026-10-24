@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+/* Shared look for every view: one blue accent, soft greys, generous radius. */
+@theme {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+
+  --color-accent: #2f7cf6;
+  --color-accent-soft: #e3eefe;
+  --color-ink: #1d1d1f;
+  --color-muted: #8a8a8e;
+  --color-line: #e5e5ea;
+  --color-surface: #ffffff;
+  --color-canvas: #ffffff;
+
+  --radius-row: 0.375rem;
+  --radius-card: 0.625rem;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.06), 0 6px 24px rgb(0 0 0 / 0.08);
+}
+
+body {
+  @apply bg-canvas font-sans text-ink antialiased;
+}

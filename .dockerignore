@@ -1,0 +1,6 @@
+.git
+bin
+data
+specs
+**/node_modules
+web/dist
