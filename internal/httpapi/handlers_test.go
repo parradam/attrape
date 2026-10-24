@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/parradam/attrape/internal/domain"
 	"github.com/parradam/attrape/internal/store"
@@ -19,7 +20,7 @@ func newTestHandler(t *testing.T) http.Handler {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	return New(st)
+	return New(st, fstest.MapFS{"index.html": {Data: []byte("<html>app</html>")}})
 }
 
 func do(t *testing.T, h http.Handler, method, path, body string) *httptest.ResponseRecorder {

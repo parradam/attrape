@@ -4,6 +4,7 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -19,8 +20,8 @@ type api struct {
 	store *store.Store
 }
 
-// New returns the application's HTTP handler.
-func New(st *store.Store) http.Handler {
+// New returns the application's HTTP handler. static is the built web app.
+func New(st *store.Store, static fs.FS) http.Handler {
 	a := &api{store: st}
 
 	mux := http.NewServeMux()
@@ -30,6 +31,8 @@ func New(st *store.Store) http.Handler {
 	mux.HandleFunc("PATCH /api/tasks/{id}", a.editTask)
 	mux.HandleFunc("POST /api/tasks/{id}/complete", a.completeTask)
 	mux.HandleFunc("POST /api/tasks/{id}/reopen", a.reopenTask)
+	mux.Handle("/api/", http.NotFoundHandler())
+	mux.Handle("/", spa(static))
 	return mux
 }
 
