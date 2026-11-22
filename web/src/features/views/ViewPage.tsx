@@ -3,13 +3,19 @@ import { errorMessage } from "../../api/client";
 import { tasksApi, type Task } from "../../api/tasks";
 import { useShortcuts } from "../../hooks/useShortcuts";
 import { AddButton } from "../../components/AddButton";
-import { InboxIcon } from "../../components/icons";
 import { QuickCapture } from "../tasks/QuickCapture";
 import { TaskRow } from "../tasks/TaskRow";
+import { ViewMenu } from "./ViewMenu";
+import type { View } from "./views";
 
-// InboxView lists Inbox tasks. Tasks completed here stay, struck through,
-// until the next load, when the server leaves them out.
-export function InboxView() {
+type Props = {
+  view: View;
+  onNavigate: (path: string) => void;
+};
+
+// ViewPage lists the tasks in one view. Tasks completed here stay, struck
+// through, until the next load, when the server shows them in their new view.
+export function ViewPage({ view, onNavigate }: Props) {
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -17,8 +23,8 @@ export function InboxView() {
   const [capturing, setCapturing] = useState(false);
 
   useEffect(() => {
-    tasksApi.inbox().then(setTasks, (err: unknown) => setError(errorMessage(err)));
-  }, []);
+    tasksApi.view(view.id).then(setTasks, (err: unknown) => setError(errorMessage(err)));
+  }, [view.id]);
 
   // Move the selection by step, starting from the top if nothing is selected.
   function move(step: number) {
@@ -65,14 +71,11 @@ export function InboxView() {
   return (
     // Clicking anywhere outside a task clears the selection.
     <div
-      className="min-h-dvh"
+      className="min-h-dvh flex-1"
       onClick={(e) => !(e.target as Element).closest("li") && setSelectedId(null)}
     >
       <main className="mx-auto max-w-2xl px-4 pt-[calc(3rem+env(safe-area-inset-top))] pb-28 md:px-8 md:pt-16">
-        <h1 className="mb-6 flex items-center gap-2.5 px-3 text-[28px] font-bold tracking-tight">
-          <InboxIcon className="size-7 text-accent" />
-          Inbox
-        </h1>
+        <ViewMenu view={view} onNavigate={onNavigate} />
 
         {error && (
           <p
@@ -84,10 +87,10 @@ export function InboxView() {
         )}
 
         {tasks?.length === 0 && (
-          <p className="px-3 pt-16 text-center text-muted">Nothing in your Inbox.</p>
+          <p className="px-3 pt-16 text-center text-muted">{view.emptyText}</p>
         )}
 
-        <ul aria-label="Inbox">
+        <ul aria-label={view.title}>
           {tasks?.map((task) => (
             <TaskRow
               key={task.id}

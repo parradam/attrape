@@ -1,37 +1,22 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { ApiError } from "../../api/client";
-import { tasksApi, type Task } from "../../api/tasks";
-import { InboxView } from "./InboxView";
+import { tasksApi } from "../../api/tasks";
+import { task } from "../../test/task";
+import { viewById, views } from "./views";
+import { ViewPage } from "./ViewPage";
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
 
-function task(id: number, title: string, extra: Partial<Task> = {}): Task {
-  return {
-    id,
-    title,
-    description: "",
-    status: "open",
-    project_id: null,
-    area_id: null,
-    do_at: null,
-    due_at: null,
-    completed_at: null,
-    created_at: "2026-10-24T09:00:00.000000Z",
-    updated_at: "2026-10-24T09:00:00.000000Z",
-    ...extra,
-  };
-}
-
 beforeEach(() => {
-  vi.spyOn(tasksApi, "inbox").mockResolvedValue([task(1, "Buy milk"), task(2, "Call the bank")]);
+  vi.spyOn(tasksApi, "view").mockResolvedValue([task(1, "Buy milk"), task(2, "Call the bank")]);
 });
 
 async function renderInbox() {
-  render(<InboxView />);
+  render(<ViewPage view={viewById.inbox} onNavigate={() => undefined} />);
   await screen.findByText("Buy milk");
 }
 
@@ -42,7 +27,7 @@ function rowOf(title: string): HTMLElement {
 }
 
 function titles() {
-  return within(screen.getByRole("list"))
+  return within(screen.getByRole("list", { name: "Inbox" }))
     .getAllByRole("listitem")
     .map((li) => li.textContent);
 }
@@ -52,10 +37,28 @@ test("lists Inbox tasks in order", async () => {
   expect(titles()).toEqual(["Buy milk", "Call the bank"]);
 });
 
-test("shows an empty state", async () => {
-  vi.mocked(tasksApi.inbox).mockResolvedValue([]);
-  render(<InboxView />);
-  expect(await screen.findByText("Nothing in your Inbox.")).toBeTruthy();
+test.each([
+  ["inbox", "Nothing in your Inbox."],
+  ["next", "Nothing in Next Actions."],
+  ["waiting", "Nothing in Waiting."],
+  ["someday", "Nothing in Someday."],
+  ["completed", "Nothing completed yet."],
+  ["dropped", "Nothing dropped."],
+] as const)("%s has an empty state", async (id, text) => {
+  vi.mocked(tasksApi.view).mockResolvedValue([]);
+  render(<ViewPage view={viewById[id]} onNavigate={() => undefined} />);
+  expect(await screen.findByText(text)).toBeTruthy();
+  expect(tasksApi.view).toHaveBeenCalledWith(id);
+});
+
+test("every view lists its tasks under its title", async () => {
+  for (const view of views) {
+    render(<ViewPage view={view} onNavigate={() => undefined} />);
+    expect(
+      await within(screen.getByRole("list", { name: view.title })).findByText("Buy milk"),
+    ).toBeTruthy();
+    cleanup();
+  }
 });
 
 test("q opens quick capture and a new task goes to the bottom", async () => {
