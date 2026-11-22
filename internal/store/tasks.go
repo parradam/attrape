@@ -15,18 +15,19 @@ var ErrNotFound = errors.New("not found")
 // timeLayout stores UTC timestamps at a fixed width so they sort as text.
 const timeLayout = "2006-01-02T15:04:05.000000Z"
 
-const taskColumns = `id, title, description, status, project_id, area_id,
+const taskColumns = `id, title, description, status, list, project_id, area_id,
 	do_at, due_at, completed_at, created_at, updated_at`
 
 // taskOrder is the standard task ordering: soonest do_at first, then
-// undated tasks oldest first. Every task list should use it.
+// undated tasks oldest first. Every view of open tasks uses it; Completed and
+// Dropped show the newest first instead.
 const taskOrder = `do_at IS NULL, do_at, created_at, id`
 
 // CreateTask inserts t and sets its ID.
 func (s *Store) CreateTask(ctx context.Context, t *domain.Task) error {
-	res, err := s.db.ExecContext(ctx, `INSERT INTO tasks (title, description, status, project_id, area_id,
-		do_at, due_at, completed_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		t.Title, t.Description, t.Status, t.ProjectID, t.AreaID,
+	res, err := s.db.ExecContext(ctx, `INSERT INTO tasks (title, description, status, list, project_id, area_id,
+		do_at, due_at, completed_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		t.Title, t.Description, t.Status, t.List, t.ProjectID, t.AreaID,
 		formatTimePtr(t.DoAt), formatTimePtr(t.DueAt), formatTimePtr(t.CompletedAt),
 		formatTime(t.CreatedAt), formatTime(t.UpdatedAt))
 	if err != nil {
@@ -48,10 +49,10 @@ func (s *Store) GetTask(ctx context.Context, id int64) (domain.Task, error) {
 
 // UpdateTask saves every field of t, or returns ErrNotFound.
 func (s *Store) UpdateTask(ctx context.Context, t domain.Task) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE tasks SET title = ?, description = ?, status = ?,
+	res, err := s.db.ExecContext(ctx, `UPDATE tasks SET title = ?, description = ?, status = ?, list = ?,
 		project_id = ?, area_id = ?, do_at = ?, due_at = ?, completed_at = ?, created_at = ?, updated_at = ?
 		WHERE id = ?`,
-		t.Title, t.Description, t.Status, t.ProjectID, t.AreaID,
+		t.Title, t.Description, t.Status, t.List, t.ProjectID, t.AreaID,
 		formatTimePtr(t.DoAt), formatTimePtr(t.DueAt), formatTimePtr(t.CompletedAt),
 		formatTime(t.CreatedAt), formatTime(t.UpdatedAt), t.ID)
 	if err != nil {
@@ -67,11 +68,26 @@ func (s *Store) UpdateTask(ctx context.Context, t domain.Task) error {
 	return nil
 }
 
-// ListInbox returns open tasks with no project, area or do_at.
-func (s *Store) ListInbox(ctx context.Context) ([]domain.Task, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+taskColumns+` FROM tasks
-		WHERE status = 'open' AND project_id IS NULL AND area_id IS NULL AND do_at IS NULL
-		ORDER BY `+taskOrder)
+// ListOpen returns the open tasks in list: the Inbox, Next Actions, Waiting
+// or Someday view.
+func (s *Store) ListOpen(ctx context.Context, list domain.List) ([]domain.Task, error) {
+	return s.listTasks(ctx, `status = 'open' AND list = ?`, taskOrder, list)
+}
+
+// ListCompleted returns done tasks, most recently completed first.
+func (s *Store) ListCompleted(ctx context.Context) ([]domain.Task, error) {
+	return s.listTasks(ctx, `status = 'done'`, `completed_at DESC, id DESC`)
+}
+
+// ListDropped returns dropped tasks, most recently updated first.
+func (s *Store) ListDropped(ctx context.Context) ([]domain.Task, error) {
+	return s.listTasks(ctx, `status = 'dropped'`, `updated_at DESC, id DESC`)
+}
+
+// listTasks returns the tasks matching where, in order. It never returns a
+// nil slice, so an empty view encodes as [].
+func (s *Store) listTasks(ctx context.Context, where, order string, args ...any) ([]domain.Task, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+taskColumns+` FROM tasks WHERE `+where+` ORDER BY `+order, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +114,7 @@ func scanTask(row scanner) (domain.Task, error) {
 		doAt, dueAt, completedAt sql.NullString
 		createdAt, updatedAt     string
 	)
-	err := row.Scan(&t.ID, &t.Title, &t.Description, &t.Status, &t.ProjectID, &t.AreaID,
+	err := row.Scan(&t.ID, &t.Title, &t.Description, &t.Status, &t.List, &t.ProjectID, &t.AreaID,
 		&doAt, &dueAt, &completedAt, &createdAt, &updatedAt)
 	if err != nil {
 		return domain.Task{}, err
