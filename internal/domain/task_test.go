@@ -105,25 +105,49 @@ func TestEdit(t *testing.T) {
 	}
 }
 
-func TestCompleteAndReopen(t *testing.T) {
+// TestStatusAndListChanges covers the spec's Keys table: what each action
+// does to an open, done and dropped task, and when it does nothing.
+func TestStatusAndListChanges(t *testing.T) {
+	complete := func(t *Task) { t.Complete(t1) }
+	drop := func(t *Task) { t.Drop(t1) }
+	reopen := func(t *Task) { t.Reopen(t1) }
+	moveTo := func(l List) func(*Task) {
+		return func(t *Task) {
+			if err := t.Move(l, t1); err != nil {
+				panic(err)
+			}
+		}
+	}
+
 	tests := []struct {
 		name          string
 		start         Status
 		act           func(*Task)
 		wantStatus    Status
+		wantList      List
 		wantCompleted bool
 		wantUpdated   time.Time
 	}{
-		{"complete open task", StatusOpen, func(t *Task) { t.Complete(t1) }, StatusDone, true, t1},
-		{"complete done task is a no-op", StatusDone, func(t *Task) { t.Complete(t1) }, StatusDone, true, t0},
-		{"complete dropped task", StatusDropped, func(t *Task) { t.Complete(t1) }, StatusDone, true, t1},
-		{"reopen done task", StatusDone, func(t *Task) { t.Reopen(t1) }, StatusOpen, false, t1},
-		{"reopen open task is a no-op", StatusOpen, func(t *Task) { t.Reopen(t1) }, StatusOpen, false, t0},
-		{"reopen dropped task", StatusDropped, func(t *Task) { t.Reopen(t1) }, StatusOpen, false, t1},
+		{"complete open task", StatusOpen, complete, StatusDone, ListNext, true, t1},
+		{"drop open task", StatusOpen, drop, StatusDropped, ListNext, false, t1},
+		{"reopen open task does nothing", StatusOpen, reopen, StatusOpen, ListNext, false, t0},
+		{"move open task", StatusOpen, moveTo(ListWaiting), StatusOpen, ListWaiting, false, t1},
+		{"move open task to its own list does nothing", StatusOpen, moveTo(ListNext), StatusOpen, ListNext, false, t0},
+
+		{"complete done task does nothing", StatusDone, complete, StatusDone, ListNext, true, t0},
+		{"drop done task does nothing", StatusDone, drop, StatusDone, ListNext, true, t0},
+		{"reopen done task", StatusDone, reopen, StatusOpen, ListNext, false, t1},
+		{"move done task does nothing", StatusDone, moveTo(ListWaiting), StatusDone, ListNext, true, t0},
+
+		{"complete dropped task does nothing", StatusDropped, complete, StatusDropped, ListNext, false, t0},
+		{"drop dropped task does nothing", StatusDropped, drop, StatusDropped, ListNext, false, t0},
+		{"restore dropped task", StatusDropped, reopen, StatusOpen, ListNext, false, t1},
+		{"move dropped task does nothing", StatusDropped, moveTo(ListWaiting), StatusDropped, ListNext, false, t0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			task, _ := NewTask("Buy milk", "", t0)
+			task.List = ListNext
 			task.Status = tt.start
 			if tt.start == StatusDone {
 				completed := t0
@@ -135,11 +159,82 @@ func TestCompleteAndReopen(t *testing.T) {
 			if task.Status != tt.wantStatus {
 				t.Errorf("status = %q, want %q", task.Status, tt.wantStatus)
 			}
+			if task.List != tt.wantList {
+				t.Errorf("list = %q, want %q", task.List, tt.wantList)
+			}
 			if (task.CompletedAt != nil) != tt.wantCompleted {
 				t.Errorf("completed_at = %v, want set = %v", task.CompletedAt, tt.wantCompleted)
 			}
 			if !task.UpdatedAt.Equal(tt.wantUpdated) {
 				t.Errorf("updated_at = %v, want %v", task.UpdatedAt, tt.wantUpdated)
+			}
+		})
+	}
+}
+
+func TestMoveToUnknownList(t *testing.T) {
+	for _, status := range []Status{StatusOpen, StatusDone, StatusDropped} {
+		t.Run(string(status), func(t *testing.T) {
+			task, _ := NewTask("Buy milk", "", t0)
+			task.Status = status
+			if err := task.Move("completed", t1); !errors.Is(err, ErrInvalidList) {
+				t.Fatalf("err = %v, want %v", err, ErrInvalidList)
+			}
+			if task.List != ListInbox || !task.UpdatedAt.Equal(t0) {
+				t.Errorf("task changed: list %q, updated_at %v", task.List, task.UpdatedAt)
+			}
+		})
+	}
+}
+
+func TestNewTaskIsInInbox(t *testing.T) {
+	task, err := NewTask("Buy milk", "", t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.List != ListInbox {
+		t.Errorf("list = %q, want %q", task.List, ListInbox)
+	}
+}
+
+func TestEditFrozenTask(t *testing.T) {
+	for _, status := range []Status{StatusDone, StatusDropped} {
+		t.Run(string(status), func(t *testing.T) {
+			task, _ := NewTask("Buy milk", "", t0)
+			task.Status = status
+			if err := task.Edit("Buy oat milk", "", t1); err != nil {
+				t.Fatal(err)
+			}
+			if task.Title != "Buy oat milk" || task.Status != status {
+				t.Errorf("got %q (%s), want %q (%s)", task.Title, task.Status, "Buy oat milk", status)
+			}
+		})
+	}
+}
+
+func TestParseList(t *testing.T) {
+	tests := []struct {
+		in      string
+		want    List
+		wantErr error
+	}{
+		{"inbox", ListInbox, nil},
+		{"next", ListNext, nil},
+		{"waiting", ListWaiting, nil},
+		{"someday", ListSomeday, nil},
+		{"completed", "", ErrInvalidList},
+		{"dropped", "", ErrInvalidList},
+		{"Inbox", "", ErrInvalidList},
+		{"", "", ErrInvalidList},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			got, err := ParseList(tt.in)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("err = %v, want %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("list = %q, want %q", got, tt.want)
 			}
 		})
 	}
