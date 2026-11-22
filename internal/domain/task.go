@@ -16,8 +16,32 @@ const (
 	StatusDropped Status = "dropped"
 )
 
-// ErrTitleRequired is returned when a task's title is blank.
-var ErrTitleRequired = errors.New("title is required")
+// List is where an open task belongs. Done and dropped tasks keep theirs, so
+// reopening or restoring returns them to it.
+type List string
+
+const (
+	ListInbox   List = "inbox"
+	ListNext    List = "next"
+	ListWaiting List = "waiting"
+	ListSomeday List = "someday"
+)
+
+var (
+	// ErrTitleRequired is returned when a task's title is blank.
+	ErrTitleRequired = errors.New("title is required")
+	// ErrInvalidList is returned for a list name that isn't one of the four.
+	ErrInvalidList = errors.New("list must be inbox, next, waiting or someday")
+)
+
+// ParseList returns the list with the given name, or ErrInvalidList.
+func ParseList(s string) (List, error) {
+	switch l := List(s); l {
+	case ListInbox, ListNext, ListWaiting, ListSomeday:
+		return l, nil
+	}
+	return "", ErrInvalidList
+}
 
 // Task is a single thing to do.
 type Task struct {
@@ -25,6 +49,7 @@ type Task struct {
 	Title       string     `json:"title"`
 	Description string     `json:"description"`
 	Status      Status     `json:"status"`
+	List        List       `json:"list"`
 	ProjectID   *int64     `json:"project_id"`
 	AreaID      *int64     `json:"area_id"`
 	DoAt        *time.Time `json:"do_at"`
@@ -45,6 +70,7 @@ func NewTask(title, description string, now time.Time) (Task, error) {
 		Title:       title,
 		Description: description,
 		Status:      StatusOpen,
+		List:        ListInbox,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}, nil
@@ -62,9 +88,12 @@ func (t *Task) Edit(title, description string, now time.Time) error {
 	return nil
 }
 
-// Complete marks the task done. Completing a done task changes nothing.
+// Done and dropped tasks are frozen: Complete, Drop and Move change nothing
+// until Reopen makes them open again. They can still be edited.
+
+// Complete marks an open task done.
 func (t *Task) Complete(now time.Time) {
-	if t.Status == StatusDone {
+	if t.Status != StatusOpen {
 		return
 	}
 	now = stamp(now)
@@ -73,7 +102,17 @@ func (t *Task) Complete(now time.Time) {
 	t.UpdatedAt = now
 }
 
-// Reopen marks the task open again. Reopening an open task changes nothing.
+// Drop marks an open task dropped.
+func (t *Task) Drop(now time.Time) {
+	if t.Status != StatusOpen {
+		return
+	}
+	t.Status = StatusDropped
+	t.UpdatedAt = stamp(now)
+}
+
+// Reopen marks a done or dropped task open again, back in its list. For a
+// dropped task this is restoring it. Reopening an open task changes nothing.
 func (t *Task) Reopen(now time.Time) {
 	if t.Status == StatusOpen {
 		return
@@ -81,6 +120,21 @@ func (t *Task) Reopen(now time.Time) {
 	t.Status = StatusOpen
 	t.CompletedAt = nil
 	t.UpdatedAt = stamp(now)
+}
+
+// Move puts an open task in another list. Moving it to the list it's
+// already in changes nothing. An unknown list returns ErrInvalidList, whatever
+// the task's status, and leaves the task unchanged.
+func (t *Task) Move(list List, now time.Time) error {
+	if _, err := ParseList(string(list)); err != nil {
+		return err
+	}
+	if t.Status != StatusOpen || t.List == list {
+		return nil
+	}
+	t.List = list
+	t.UpdatedAt = stamp(now)
+	return nil
 }
 
 // stamp returns now in UTC to the microsecond, the precision timestamps are

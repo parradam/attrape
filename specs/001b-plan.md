@@ -20,7 +20,7 @@ Migration `002_task_list.sql`:
 - Domain:
   - `type List string` with `ListInbox`, `ListNext`, `ListWaiting`, `ListSomeday`; `domain.ParseList(s string) (List, error)`; `domain.ErrInvalidList`
   - `Task.List` field, JSON `list`; `NewTask` sets it to `ListInbox`
-  - `(*Task).Move(list List, now time.Time)`: open tasks only; nothing if it's already in that list
+  - `(*Task).Move(list List, now time.Time) error`: open tasks only; nothing if it's already in that list; `ErrInvalidList` for an unknown list
   - `(*Task).Complete(now)`: open tasks only (001a also allowed it on dropped tasks)
   - `(*Task).Drop(now)`: open tasks only
   - `(*Task).Reopen(now)`: done or dropped tasks; clears `completed_at`; nothing on an open task (unchanged)
