@@ -41,7 +41,7 @@ func health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) listInbox(w http.ResponseWriter, r *http.Request) {
-	tasks, err := a.store.ListInbox(r.Context())
+	tasks, err := a.store.ListOpen(r.Context(), domain.ListInbox)
 	if err != nil {
 		writeError(w, err)
 		return

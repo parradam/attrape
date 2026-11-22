@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -54,7 +55,7 @@ func TestTaskRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Title != "Buy milk" || got.Status != domain.StatusOpen {
+	if got.Title != "Buy milk" || got.Status != domain.StatusOpen || got.List != domain.ListInbox {
 		t.Errorf("got %+v", got)
 	}
 	if !got.CreatedAt.Equal(created.CreatedAt) {
@@ -62,6 +63,9 @@ func TestTaskRoundTrip(t *testing.T) {
 	}
 
 	if err := got.Edit("Buy oat milk", "semi-skimmed", t0.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := got.Move(domain.ListWaiting, t0.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	got.Complete(t0.Add(time.Hour))
@@ -73,7 +77,8 @@ func TestTaskRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again.Title != "Buy oat milk" || again.Description != "semi-skimmed" || again.Status != domain.StatusDone {
+	if again.Title != "Buy oat milk" || again.Description != "semi-skimmed" ||
+		again.Status != domain.StatusDone || again.List != domain.ListWaiting {
 		t.Errorf("after update got %+v", again)
 	}
 	if again.CompletedAt == nil || !again.CompletedAt.Equal(t0.Add(time.Hour)) {
@@ -93,46 +98,157 @@ func TestTaskNotFound(t *testing.T) {
 	}
 }
 
-func TestListInbox(t *testing.T) {
-	s := openTest(t)
-	id := int64(1)
-	doAt := t0.Add(24 * time.Hour)
-
-	// Created out of order to check sorting by created_at.
-	create(t, s, "second", t0.Add(2*time.Minute), nil)
-	create(t, s, "first", t0.Add(time.Minute), nil)
-	create(t, s, "done", t0, func(t *domain.Task) { t.Complete(t0) })
-	create(t, s, "dropped", t0, func(t *domain.Task) { t.Status = domain.StatusDropped })
-	create(t, s, "in a project", t0, func(t *domain.Task) { t.ProjectID = &id })
-	create(t, s, "in an area", t0, func(t *domain.Task) { t.AreaID = &id })
-	create(t, s, "scheduled", t0, func(t *domain.Task) { t.DoAt = &doAt })
-	create(t, s, "third", t0.Add(3*time.Minute), nil)
-
-	tasks, err := s.ListInbox(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got []string
+func titles(tasks []domain.Task) []string {
+	got := []string{}
 	for _, task := range tasks {
 		got = append(got, task.Title)
 	}
-	want := []string{"first", "second", "third"}
-	if len(got) != len(want) {
-		t.Fatalf("got %v, want %v", got, want)
+	return got
+}
+
+func assertTitles(t *testing.T, view string, tasks []domain.Task, err error, want ...string) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("%s: %v", view, err)
 	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("got %v, want %v", got, want)
+	if tasks == nil {
+		t.Errorf("%s = nil, want a non-nil slice so it encodes as []", view)
+	}
+	if want == nil {
+		want = []string{}
+	}
+	if got := titles(tasks); !slices.Equal(got, want) {
+		t.Errorf("%s = %v, want %v", view, got, want)
+	}
+}
+
+func moveTo(l domain.List) func(*domain.Task) {
+	return func(t *domain.Task) {
+		if err := t.Move(l, t0); err != nil {
+			panic(err)
 		}
 	}
 }
 
-func TestListInboxEmpty(t *testing.T) {
-	tasks, err := openTest(t).ListInbox(context.Background())
-	if err != nil {
+func TestListOpen(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+
+	// Created out of order to check sorting by created_at.
+	create(t, s, "inbox second", t0.Add(2*time.Minute), nil)
+	create(t, s, "inbox first", t0.Add(time.Minute), nil)
+	create(t, s, "inbox done", t0, func(t *domain.Task) { t.Complete(t0) })
+	create(t, s, "inbox dropped", t0, func(t *domain.Task) { t.Drop(t0) })
+	create(t, s, "next", t0, moveTo(domain.ListNext))
+	create(t, s, "waiting", t0, moveTo(domain.ListWaiting))
+	create(t, s, "someday", t0, moveTo(domain.ListSomeday))
+	create(t, s, "inbox third", t0.Add(3*time.Minute), nil)
+
+	tasks, err := s.ListOpen(ctx, domain.ListInbox)
+	assertTitles(t, "inbox", tasks, err, "inbox first", "inbox second", "inbox third")
+	tasks, err = s.ListOpen(ctx, domain.ListNext)
+	assertTitles(t, "next", tasks, err, "next")
+	tasks, err = s.ListOpen(ctx, domain.ListWaiting)
+	assertTitles(t, "waiting", tasks, err, "waiting")
+	tasks, err = s.ListOpen(ctx, domain.ListSomeday)
+	assertTitles(t, "someday", tasks, err, "someday")
+}
+
+func TestListCompleted(t *testing.T) {
+	s := openTest(t)
+	at := func(m int) func(*domain.Task) {
+		return func(t *domain.Task) { t.Complete(t0.Add(time.Duration(m) * time.Minute)) }
+	}
+
+	create(t, s, "completed second", t0, at(2))
+	create(t, s, "completed third", t0, at(3))
+	create(t, s, "completed first", t0, at(1))
+	create(t, s, "open", t0, nil)
+	create(t, s, "dropped", t0, func(t *domain.Task) { t.Drop(t0) })
+
+	tasks, err := s.ListCompleted(context.Background())
+	assertTitles(t, "completed", tasks, err, "completed third", "completed second", "completed first")
+}
+
+func TestListDropped(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	at := func(m int) func(*domain.Task) {
+		return func(t *domain.Task) { t.Drop(t0.Add(time.Duration(m) * time.Minute)) }
+	}
+
+	create(t, s, "dropped second", t0, at(2))
+	first := create(t, s, "dropped first", t0, at(1))
+	create(t, s, "dropped third", t0, at(3))
+	create(t, s, "open", t0, nil)
+	create(t, s, "done", t0, func(t *domain.Task) { t.Complete(t0) })
+
+	tasks, err := s.ListDropped(ctx)
+	assertTitles(t, "dropped", tasks, err, "dropped third", "dropped second", "dropped first")
+
+	// Editing a dropped task updates it, so it moves to the top.
+	if err := first.Edit("dropped first, edited", "", t0.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if tasks == nil || len(tasks) != 0 {
-		t.Errorf("got %v, want empty non-nil slice", tasks)
+	if err := s.UpdateTask(ctx, first); err != nil {
+		t.Fatal(err)
 	}
+	tasks, err = s.ListDropped(ctx)
+	assertTitles(t, "dropped after edit", tasks, err, "dropped first, edited", "dropped third", "dropped second")
+}
+
+// Every task appears in exactly one view.
+func TestEveryTaskInOneView(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+
+	lists := []domain.List{domain.ListInbox, domain.ListNext, domain.ListWaiting, domain.ListSomeday}
+	statuses := map[string]func(*domain.Task){
+		"open":    func(*domain.Task) {},
+		"done":    func(t *domain.Task) { t.Complete(t0) },
+		"dropped": func(t *domain.Task) { t.Drop(t0) },
+	}
+	want := map[int64]bool{}
+	for _, l := range lists {
+		for name, status := range statuses {
+			task := create(t, s, string(l)+" "+name, t0, func(t *domain.Task) {
+				moveTo(l)(t)
+				status(t)
+			})
+			want[task.ID] = true
+		}
+	}
+
+	seen := map[int64]int{}
+	count := func(tasks []domain.Task, err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, task := range tasks {
+			seen[task.ID]++
+		}
+	}
+	for _, l := range lists {
+		count(s.ListOpen(ctx, l))
+	}
+	count(s.ListCompleted(ctx))
+	count(s.ListDropped(ctx))
+
+	for id := range want {
+		if seen[id] != 1 {
+			t.Errorf("task %d appears in %d views, want 1", id, seen[id])
+		}
+	}
+}
+
+func TestListsEmpty(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+
+	tasks, err := s.ListOpen(ctx, domain.ListInbox)
+	assertTitles(t, "inbox", tasks, err)
+	tasks, err = s.ListCompleted(ctx)
+	assertTitles(t, "completed", tasks, err)
+	tasks, err = s.ListDropped(ctx)
+	assertTitles(t, "dropped", tasks, err)
 }
