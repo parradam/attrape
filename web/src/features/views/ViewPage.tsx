@@ -3,6 +3,7 @@ import { errorMessage } from "../../api/client";
 import { tasksApi, type Task } from "../../api/tasks";
 import { useShortcuts } from "../../hooks/useShortcuts";
 import { AddButton } from "../../components/AddButton";
+import { Toast } from "../../components/Toast";
 import { QuickCapture } from "../tasks/QuickCapture";
 import { TaskRow } from "../tasks/TaskRow";
 import { ViewMenu } from "./ViewMenu";
@@ -26,6 +27,8 @@ export function ViewPage({ view, onNavigate }: Props) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [capturing, setCapturing] = useState(false);
+  // toast.id restarts the toast when the same message is shown again.
+  const [toast, setToast] = useState<{ id: number; message: string } | null>(null);
   // pending holds tasks with a change in flight; further changes wait.
   const pending = useRef(new Set<number>());
 
@@ -43,11 +46,15 @@ export function ViewPage({ view, onNavigate }: Props) {
 
   const selected = tasks?.find((t) => t.id === selectedId);
 
+  // The lists a task can be moved to, from the views of open tasks.
+  const lists = views.flatMap(({ list, title, key }) => (list ? [{ list, title, key }] : []));
+
   // i, n, w and s move the selected task to that view's list.
   const moveKeys = Object.fromEntries(
-    views.flatMap(({ key, list }) =>
-      list ? [[key, () => selected && void change(selected, (id) => tasksApi.move(id, list))]] : [],
-    ),
+    lists.map(({ key, list }) => [
+      key,
+      () => selected && void change(selected, (id) => tasksApi.move(id, list)),
+    ]),
   );
 
   useShortcuts({
@@ -137,6 +144,10 @@ export function ViewPage({ view, onNavigate }: Props) {
               listLabel={view.list ? undefined : viewById[task.list].title}
               onSelect={() => setSelectedId(task.id)}
               onToggle={() => toggle(task)}
+              lists={lists}
+              onMove={(list) => void change(task, (id) => tasksApi.move(id, list))}
+              onDrop={() => void change(task, tasksApi.drop)}
+              onReopen={() => void change(task, tasksApi.reopen)}
               onOpen={() => setEditingId(task.id)}
               onSave={(changes) => save(task, changes)}
               onClose={() => setEditingId(null)}
@@ -150,12 +161,19 @@ export function ViewPage({ view, onNavigate }: Props) {
           <QuickCapture
             onClose={() => setCapturing(false)}
             onCreated={(task) => {
-              setTasks((ts) => [...(ts ?? []), task]);
-              setSelectedId(task.id);
+              // Quick capture always adds to the Inbox; elsewhere, say so.
+              if (view.id === "inbox") {
+                setTasks((ts) => [...(ts ?? []), task]);
+                setSelectedId(task.id);
+              } else {
+                setToast({ id: task.id, message: "Added to Inbox" });
+              }
               setCapturing(false);
             }}
           />
         )}
+
+        {toast && <Toast key={toast.id} message={toast.message} onDone={() => setToast(null)} />}
       </main>
     </div>
   );

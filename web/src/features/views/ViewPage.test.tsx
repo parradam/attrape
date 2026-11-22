@@ -492,3 +492,153 @@ test.each([
   expect(tasksApi.reopen).toHaveBeenCalledTimes(1);
   expect(tasksApi.complete).not.toHaveBeenCalled();
 });
+
+async function openEditor(title: string) {
+  await screen.findByText(title);
+  fireEvent.doubleClick(screen.getByText(title));
+  return screen.getByLabelText<HTMLInputElement>("Title").closest("li") as HTMLElement;
+}
+
+test("an open task's card has a button for each list and one to drop", async () => {
+  await renderInbox();
+  const card = await openEditor("Buy milk");
+
+  const moveTo = within(card).getByRole("group", { name: "Move to" });
+  const buttons = within(moveTo).getAllByRole("button");
+  expect(buttons.map((b) => b.textContent)).toEqual([
+    "Inbox",
+    "Next Actions",
+    "Waiting",
+    "Someday",
+  ]);
+  expect(buttons.map((b) => b.getAttribute("aria-pressed"))).toEqual([
+    "true",
+    "false",
+    "false",
+    "false",
+  ]);
+  expect(within(card).getByRole("button", { name: "Drop" })).toBeTruthy();
+  expect(within(card).queryByRole("button", { name: /Reopen|Restore/ })).toBeNull();
+});
+
+test("a list button moves the task out of the view", async () => {
+  vi.spyOn(tasksApi, "move").mockResolvedValue(task(1, "Buy milk", { list: "waiting" }));
+  await renderInbox();
+  const card = await openEditor("Buy milk");
+
+  await act(async () => {
+    fireEvent.click(within(card).getByRole("button", { name: "Waiting" }));
+  });
+
+  expect(tasksApi.move).toHaveBeenCalledWith(1, "waiting");
+  expect(titles()).toEqual(["Call the bank"]);
+  expect(screen.queryByLabelText("Title")).toBeNull();
+});
+
+test("a list button saves unsaved changes first", async () => {
+  vi.spyOn(tasksApi, "edit").mockResolvedValue(task(1, "Buy oat milk"));
+  vi.spyOn(tasksApi, "move").mockResolvedValue(task(1, "Buy oat milk", { list: "next" }));
+  await renderInbox();
+  const card = await openEditor("Buy milk");
+  fireEvent.change(within(card).getByLabelText("Title"), { target: { value: "Buy oat milk" } });
+
+  await act(async () => {
+    fireEvent.click(within(card).getByRole("button", { name: "Next Actions" }));
+  });
+
+  expect(tasksApi.edit).toHaveBeenCalledWith(1, { title: "Buy oat milk", description: "" });
+  expect(tasksApi.move).toHaveBeenCalledWith(1, "next");
+  expect(vi.mocked(tasksApi.edit).mock.invocationCallOrder[0]).toBeLessThan(
+    vi.mocked(tasksApi.move).mock.invocationCallOrder[0],
+  );
+});
+
+test("a list button does nothing if the unsaved changes are rejected", async () => {
+  vi.spyOn(tasksApi, "edit").mockRejectedValue(new ApiError("title is required", 400));
+  vi.spyOn(tasksApi, "move");
+  await renderInbox();
+  const card = await openEditor("Buy milk");
+  fireEvent.change(within(card).getByLabelText("Title"), { target: { value: " " } });
+
+  await act(async () => {
+    fireEvent.click(within(card).getByRole("button", { name: "Next Actions" }));
+  });
+
+  expect(tasksApi.move).not.toHaveBeenCalled();
+  expect(screen.getByRole("alert").textContent).toBe("Title is required.");
+});
+
+test("the drop button drops the task and closes the card", async () => {
+  vi.spyOn(tasksApi, "drop").mockResolvedValue(task(1, "Buy milk", { status: "dropped" }));
+  await renderInbox();
+  const card = await openEditor("Buy milk");
+
+  await act(async () => {
+    fireEvent.click(within(card).getByRole("button", { name: "Drop" }));
+  });
+
+  expect(tasksApi.drop).toHaveBeenCalledWith(1);
+  expect(screen.queryByLabelText("Title")).toBeNull();
+  expect(screen.getByText("Buy milk").className).toContain("text-muted");
+});
+
+test.each([
+  ["completed", "done", "Reopen"],
+  ["dropped", "dropped", "Restore"],
+] as const)("in %s, a %s task's card has only a %s button", async (id, status, verb) => {
+  vi.mocked(tasksApi.view).mockResolvedValue([task(1, "Buy milk", { status, list: "waiting" })]);
+  vi.spyOn(tasksApi, "reopen").mockResolvedValue(task(1, "Buy milk", { list: "waiting" }));
+  render(<ViewPage view={viewById[id]} onNavigate={() => undefined} />);
+  const card = await openEditor("Buy milk");
+
+  expect(within(card).queryByRole("group", { name: "Move to" })).toBeNull();
+  expect(within(card).queryByRole("button", { name: "Drop" })).toBeNull();
+
+  await act(async () => {
+    fireEvent.click(within(card).getByRole("button", { name: verb }));
+  });
+  expect(tasksApi.reopen).toHaveBeenCalledWith(1);
+  expect(screen.queryByLabelText("Title")).toBeNull();
+});
+
+async function capture(title: string) {
+  fireEvent.keyDown(window, { key: "q" });
+  const dialog = screen.getByRole("dialog", { name: "New task" });
+  fireEvent.change(within(dialog).getByLabelText("Title"), { target: { value: title } });
+  await act(async () => {
+    fireEvent.submit(dialog);
+  });
+}
+
+test("quick capture from another view adds to the Inbox and says so", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    vi.mocked(tasksApi.view).mockResolvedValue([task(1, "Buy milk", { list: "next" })]);
+    vi.spyOn(tasksApi, "create").mockResolvedValue(task(3, "Book dentist"));
+    render(<ViewPage view={viewById.next} onNavigate={() => undefined} />);
+    await screen.findByText("Buy milk");
+
+    await capture("Book dentist");
+
+    expect(tasksApi.create).toHaveBeenCalledWith("Book dentist", "");
+    expect(screen.getByRole("status").textContent).toBe("Added to Inbox");
+    expect(screen.queryByText("Book dentist")).toBeNull();
+
+    await act(async () => {
+      vi.advanceTimersByTime(2500);
+    });
+    expect(screen.queryByRole("status")).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("quick capture in the Inbox shows the task and no toast", async () => {
+  vi.spyOn(tasksApi, "create").mockResolvedValue(task(3, "Book dentist"));
+  await renderInbox();
+
+  await capture("Book dentist");
+
+  expect(titles()).toEqual(["Buy milk", "Call the bank", "Book dentist"]);
+  expect(screen.queryByRole("status")).toBeNull();
+});

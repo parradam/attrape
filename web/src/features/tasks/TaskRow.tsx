@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
 import { errorMessage } from "../../api/client";
-import type { Task } from "../../api/tasks";
+import type { List, Task } from "../../api/tasks";
 import { SWIPE_THRESHOLD, useSwipe } from "../../hooks/useSwipe";
 import { Checkbox } from "../../components/Checkbox";
 import { TickIcon } from "../../components/icons";
@@ -13,6 +13,11 @@ type Props = {
   listLabel?: string;
   onSelect: () => void;
   onToggle: () => void;
+  // lists are the lists an open task can be moved to, for the card's buttons.
+  lists: { list: List; title: string }[];
+  onMove: (list: List) => void;
+  onDrop: () => void;
+  onReopen: () => void;
   onOpen: () => void;
   onSave: (changes: { title: string; description: string }) => Promise<void>;
   onClose: () => void;
@@ -28,6 +33,10 @@ export function TaskRow({
   listLabel,
   onSelect,
   onToggle,
+  lists,
+  onMove,
+  onDrop,
+  onReopen,
   onOpen,
   onSave,
   onClose,
@@ -40,7 +49,18 @@ export function TaskRow({
   }, [selected]);
 
   if (editing) {
-    return <TaskEditor task={task} onToggle={onToggle} onSave={onSave} onClose={onClose} />;
+    return (
+      <TaskEditor
+        task={task}
+        lists={lists}
+        onToggle={onToggle}
+        onMove={onMove}
+        onDrop={onDrop}
+        onReopen={onReopen}
+        onSave={onSave}
+        onClose={onClose}
+      />
+    );
   }
 
   return (
@@ -81,26 +101,49 @@ export function TaskRow({
 // is muted.
 const titleStyles = { open: "", done: "text-muted line-through", dropped: "text-muted" };
 
-type EditorProps = Pick<Props, "task" | "onToggle" | "onSave" | "onClose">;
+type EditorProps = Pick<
+  Props,
+  "task" | "lists" | "onToggle" | "onMove" | "onDrop" | "onReopen" | "onSave" | "onClose"
+>;
 
-function TaskEditor({ task, onToggle, onSave, onClose }: EditorProps) {
+function TaskEditor({
+  task,
+  lists,
+  onToggle,
+  onMove,
+  onDrop,
+  onReopen,
+  onSave,
+  onClose,
+}: EditorProps) {
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description);
   const [error, setError] = useState("");
 
-  async function save() {
-    if (title === task.title && description === task.description) {
-      onClose();
-      return;
-    }
+  const changed = title !== task.title || description !== task.description;
+
+  // persist saves any changes. If the server rejects them, it keeps the card
+  // open on the saved title, so nothing is lost silently, and returns false.
+  async function persist(): Promise<boolean> {
     try {
       await onSave({ title, description });
-      onClose();
+      return true;
     } catch (err) {
-      // Keep the card open on the saved title so nothing is lost silently.
       setTitle(task.title);
       setError(errorMessage(err));
+      return false;
     }
+  }
+
+  async function save() {
+    if (!changed || (await persist())) onClose();
+  }
+
+  // act saves any changes, closes the card, then runs a button's action.
+  async function act(action: () => void) {
+    if (changed && !(await persist())) return;
+    onClose();
+    action();
   }
 
   function onBlur(e: FocusEvent) {
@@ -148,6 +191,50 @@ function TaskEditor({ task, onToggle, onSave, onClose }: EditorProps) {
           {error}
         </p>
       )}
+      {/* On mobile, where there are no keys, buttons move, drop and reopen. */}
+      <div className="mt-3 flex flex-wrap items-center gap-1.5 pl-7.5 md:hidden">
+        {task.status === "open" ? (
+          <>
+            <div role="group" aria-label="Move to" className="flex flex-wrap gap-1.5">
+              {lists.map(({ list, title }) => (
+                <ActionButton
+                  key={list}
+                  pressed={task.list === list}
+                  onClick={() => void act(() => onMove(list))}
+                >
+                  {title}
+                </ActionButton>
+              ))}
+            </div>
+            <ActionButton onClick={() => void act(onDrop)}>Drop</ActionButton>
+          </>
+        ) : (
+          <ActionButton onClick={() => void act(onReopen)}>
+            {task.status === "done" ? "Reopen" : "Restore"}
+          </ActionButton>
+        )}
+      </div>
     </li>
+  );
+}
+
+type ActionButtonProps = {
+  pressed?: boolean;
+  onClick: () => void;
+  children: string;
+};
+
+function ActionButton({ pressed, onClick, children }: ActionButtonProps) {
+  return (
+    <button
+      type="button"
+      aria-pressed={pressed}
+      // Keep focus in the card, so the press doesn't also save it on blur.
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+      className="rounded-full border border-line px-3 py-1 text-sm text-ink/80 aria-pressed:border-accent aria-pressed:bg-accent-soft aria-pressed:text-accent"
+    >
+      {children}
+    </button>
   );
 }
