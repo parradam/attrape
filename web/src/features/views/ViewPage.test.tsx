@@ -186,13 +186,13 @@ test("the checkbox completes a task, which stays struck through", async () => {
 
   expect(tasksApi.complete).toHaveBeenCalledWith(1);
   expect(
-    screen.getByRole("checkbox", { name: "Complete “Buy milk”" }).getAttribute("aria-checked"),
+    screen.getByRole("checkbox", { name: "Reopen “Buy milk”" }).getAttribute("aria-checked"),
   ).toBe("true");
   expect(screen.getByText("Buy milk").className).toContain("line-through");
 });
 
 function selectedTitle() {
-  return screen.getAllByRole("listitem").find((li) => li.getAttribute("aria-selected") === "true")
+  return screen.queryAllByRole("listitem").find((li) => li.getAttribute("aria-selected") === "true")
     ?.textContent;
 }
 
@@ -222,30 +222,33 @@ test("clicking a task selects it and clicking elsewhere clears it", async () => 
   expect(selectedTitle()).toBeUndefined();
 });
 
-test("x completes and reopens the selected task", async () => {
+test("c completes the selected task and o reopens it", async () => {
   vi.spyOn(tasksApi, "complete").mockResolvedValue(task(2, "Call the bank", { status: "done" }));
   vi.spyOn(tasksApi, "reopen").mockResolvedValue(task(2, "Call the bank"));
   await renderInbox();
 
   fireEvent.click(screen.getByText("Call the bank"));
   await act(async () => {
-    fireEvent.keyDown(window, { key: "x" });
+    fireEvent.keyDown(window, { key: "c" });
   });
   expect(tasksApi.complete).toHaveBeenCalledWith(2);
   expect(screen.getByText("Call the bank").className).toContain("line-through");
 
   await act(async () => {
-    fireEvent.keyDown(window, { key: "x" });
+    fireEvent.keyDown(window, { key: "o" });
   });
   expect(tasksApi.reopen).toHaveBeenCalledWith(2);
   expect(screen.getByText("Call the bank").className).not.toContain("line-through");
+  expect(titles()).toEqual(["Buy milk", "Call the bank"]);
 });
 
-test("x does nothing with no selection", async () => {
-  vi.spyOn(tasksApi, "complete");
+test("action keys do nothing with no selection", async () => {
+  const spies = spyOnActions();
   await renderInbox();
-  fireEvent.keyDown(window, { key: "x" });
-  expect(tasksApi.complete).not.toHaveBeenCalled();
+  for (const key of ["c", "d", "o", "i", "n", "w", "s"]) {
+    fireEvent.keyDown(window, { key });
+  }
+  for (const spy of spies) expect(spy).not.toHaveBeenCalled();
 });
 
 test("Enter opens the selected task for editing", async () => {
@@ -255,7 +258,7 @@ test("Enter opens the selected task for editing", async () => {
   expect(screen.getByLabelText<HTMLInputElement>("Title").value).toBe("Buy milk");
 });
 
-test("a failed completion is put back", async () => {
+test("a failed completion leaves the task as it was and shows the error", async () => {
   vi.spyOn(tasksApi, "complete").mockRejectedValue(new ApiError("something went wrong", 500));
   await renderInbox();
 
@@ -267,11 +270,7 @@ test("a failed completion is put back", async () => {
   expect(screen.getByRole("alert").textContent).toBe("Something went wrong.");
 });
 
-test("swiping right completes a task", async () => {
-  vi.spyOn(tasksApi, "complete").mockResolvedValue(task(1, "Buy milk", { status: "done" }));
-  await renderInbox();
-
-  const row = rowOf("Buy milk");
+async function swipeRight(row: HTMLElement) {
   const p = { pointerType: "touch", pointerId: 1, clientY: 10 };
   await act(async () => {
     fireEvent.pointerDown(row, { ...p, clientX: 10 });
@@ -279,6 +278,13 @@ test("swiping right completes a task", async () => {
     fireEvent.pointerMove(row, { ...p, clientX: 120 });
     fireEvent.pointerUp(row, { ...p, clientX: 120 });
   });
+}
+
+test("swiping right completes a task", async () => {
+  vi.spyOn(tasksApi, "complete").mockResolvedValue(task(1, "Buy milk", { status: "done" }));
+  await renderInbox();
+
+  await swipeRight(rowOf("Buy milk"));
 
   expect(tasksApi.complete).toHaveBeenCalledWith(1);
   expect(screen.getByText("Buy milk").className).toContain("line-through");
@@ -291,4 +297,198 @@ test("tapping a task on a touch screen opens it", async () => {
   fireEvent.pointerDown(row, p);
   fireEvent.pointerUp(row, p);
   expect(screen.getByLabelText<HTMLInputElement>("Title").value).toBe("Buy milk");
+});
+
+// spyOnActions spies on every API call that changes a task, so a test can
+// check that none was made.
+function spyOnActions() {
+  return [
+    vi.spyOn(tasksApi, "complete"),
+    vi.spyOn(tasksApi, "drop"),
+    vi.spyOn(tasksApi, "reopen"),
+    vi.spyOn(tasksApi, "move"),
+    vi.spyOn(tasksApi, "edit"),
+    vi.spyOn(tasksApi, "create"),
+  ];
+}
+
+async function select(title: string) {
+  await screen.findByText(title);
+  fireEvent.click(screen.getByText(title));
+}
+
+async function press(key: string) {
+  await act(async () => {
+    fireEvent.keyDown(window, { key });
+  });
+}
+
+test.each([
+  ["i", "inbox"],
+  ["n", "next"],
+  ["w", "waiting"],
+  ["s", "someday"],
+] as const)("%s moves the selected task to %s, and it leaves the view", async (key, list) => {
+  vi.mocked(tasksApi.view).mockResolvedValue([
+    task(1, "Buy milk", { list: "next" }),
+    task(2, "Call the bank", { list: "next" }),
+  ]);
+  vi.spyOn(tasksApi, "move").mockImplementation((id, to) =>
+    Promise.resolve(task(id, "Buy milk", { list: to })),
+  );
+  render(<ViewPage view={viewById.next} onNavigate={() => undefined} />);
+  await select("Buy milk");
+
+  await press(key);
+
+  expect(tasksApi.move).toHaveBeenCalledWith(1, list);
+  if (list === "next") {
+    // Already there, so the server returns it unchanged and it stays.
+    expect(screen.getByText("Buy milk")).toBeTruthy();
+  } else {
+    expect(screen.queryByText("Buy milk")).toBeNull();
+    expect(selectedTitle()).toBe("Call the bank");
+  }
+});
+
+test("after moving the last task, the one above is selected", async () => {
+  vi.spyOn(tasksApi, "move").mockResolvedValue(task(2, "Call the bank", { list: "next" }));
+  await renderInbox();
+  await select("Call the bank");
+
+  await press("n");
+
+  expect(titles()).toEqual(["Buy milk"]);
+  expect(selectedTitle()).toBe("Buy milk");
+});
+
+test("after moving the only task, nothing is selected", async () => {
+  vi.mocked(tasksApi.view).mockResolvedValue([task(1, "Buy milk")]);
+  vi.spyOn(tasksApi, "move").mockResolvedValue(task(1, "Buy milk", { list: "waiting" }));
+  await renderInbox();
+  await select("Buy milk");
+
+  await press("w");
+
+  expect(screen.getByText("Nothing in your Inbox.")).toBeTruthy();
+  expect(selectedTitle()).toBeUndefined();
+});
+
+test("d drops the selected task, which stays muted without a strikethrough", async () => {
+  vi.spyOn(tasksApi, "drop").mockResolvedValue(task(1, "Buy milk", { status: "dropped" }));
+  await renderInbox();
+  await select("Buy milk");
+
+  await press("d");
+
+  expect(tasksApi.drop).toHaveBeenCalledWith(1);
+  const title = screen.getByText("Buy milk");
+  expect(title.className).toContain("text-muted");
+  expect(title.className).not.toContain("line-through");
+  expect(screen.getByRole("checkbox", { name: "Restore “Buy milk”" })).toBeTruthy();
+  expect(titles()).toEqual(["Buy milk", "Call the bank"]);
+});
+
+test("o restores the selected dropped task, which stays in place", async () => {
+  vi.mocked(tasksApi.view).mockResolvedValue([
+    task(1, "Buy milk", { status: "dropped", list: "waiting" }),
+  ]);
+  vi.spyOn(tasksApi, "reopen").mockResolvedValue(task(1, "Buy milk", { list: "waiting" }));
+  render(<ViewPage view={viewById.dropped} onNavigate={() => undefined} />);
+  await select("Buy milk");
+
+  await press("o");
+
+  expect(tasksApi.reopen).toHaveBeenCalledWith(1);
+  expect(screen.getByText("Buy milk").className).not.toContain("text-muted");
+  expect(screen.getByRole("checkbox", { name: "Complete “Buy milk”" })).toBeTruthy();
+});
+
+test("a key the server ignores leaves the task as it was", async () => {
+  // c on a dropped task: the server returns it unchanged.
+  const dropped = task(1, "Buy milk", { status: "dropped" });
+  vi.mocked(tasksApi.view).mockResolvedValue([dropped]);
+  vi.spyOn(tasksApi, "complete").mockResolvedValue(dropped);
+  render(<ViewPage view={viewById.dropped} onNavigate={() => undefined} />);
+  await select("Buy milk");
+
+  await press("c");
+
+  expect(screen.getByText("Buy milk").className).not.toContain("line-through");
+  expect(screen.getByRole("checkbox", { name: "Restore “Buy milk”" })).toBeTruthy();
+});
+
+test.each(["x", "g", "u", "r"])("%s does nothing", async (key) => {
+  const spies = spyOnActions();
+  await renderInbox();
+  await select("Buy milk");
+
+  await press(key);
+
+  for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+  expect(screen.getByText("Buy milk").className).not.toContain("line-through");
+});
+
+test("a second key press waits for the first to finish", async () => {
+  let finish: (t: ReturnType<typeof task>) => void = () => undefined;
+  vi.spyOn(tasksApi, "complete").mockReturnValue(
+    new Promise((resolve) => {
+      finish = resolve;
+    }),
+  );
+  vi.spyOn(tasksApi, "drop");
+  await renderInbox();
+  await select("Buy milk");
+
+  await press("c");
+  await press("d");
+  expect(tasksApi.drop).not.toHaveBeenCalled();
+
+  await act(async () => finish(task(1, "Buy milk", { status: "done" })));
+  expect(screen.getByText("Buy milk").className).toContain("line-through");
+});
+
+test.each([
+  ["completed", "done"],
+  ["dropped", "dropped"],
+] as const)("%s shows each task's list", async (id, status) => {
+  vi.mocked(tasksApi.view).mockResolvedValue([
+    task(1, "Buy milk", { status, list: "waiting" }),
+    task(2, "Call the bank", { status, list: "inbox" }),
+  ]);
+  render(<ViewPage view={viewById[id]} onNavigate={() => undefined} />);
+  await screen.findByText("Buy milk");
+
+  expect(rowOf("Buy milk").textContent).toContain("Waiting");
+  expect(rowOf("Call the bank").textContent).toContain("Inbox");
+});
+
+test("open views don't show the list", async () => {
+  await renderInbox();
+  expect(rowOf("Buy milk").textContent).toBe("Buy milk");
+});
+
+test.each([
+  ["completed", "done", "Reopen"],
+  ["dropped", "dropped", "Restore"],
+] as const)("in %s, the checkbox and a swipe both reopen", async (id, status, verb) => {
+  vi.mocked(tasksApi.view).mockResolvedValue([task(1, "Buy milk", { status })]);
+  vi.spyOn(tasksApi, "reopen").mockResolvedValue(task(1, "Buy milk"));
+  vi.spyOn(tasksApi, "complete");
+  render(<ViewPage view={viewById[id]} onNavigate={() => undefined} />);
+  await screen.findByText("Buy milk");
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole("checkbox", { name: `${verb} “Buy milk”` }));
+  });
+  expect(tasksApi.reopen).toHaveBeenCalledTimes(1);
+
+  vi.mocked(tasksApi.reopen).mockClear();
+  vi.mocked(tasksApi.view).mockResolvedValue([task(1, "Buy milk", { status })]);
+  cleanup();
+  render(<ViewPage view={viewById[id]} onNavigate={() => undefined} />);
+  await screen.findByText("Buy milk");
+  await swipeRight(rowOf("Buy milk"));
+  expect(tasksApi.reopen).toHaveBeenCalledTimes(1);
+  expect(tasksApi.complete).not.toHaveBeenCalled();
 });

@@ -30,5 +30,8 @@ export const tasksApi = {
   edit: (id: number, changes: { title?: string; description?: string }) =>
     request<Task>("PATCH", `/api/tasks/${id}`, changes),
   complete: (id: number) => request<Task>("POST", `/api/tasks/${id}/complete`),
+  drop: (id: number) => request<Task>("POST", `/api/tasks/${id}/drop`),
+  // reopen reopens a done task or restores a dropped one.
   reopen: (id: number) => request<Task>("POST", `/api/tasks/${id}/reopen`),
+  move: (id: number, list: List) => request<Task>("POST", `/api/tasks/${id}/move`, { list }),
 };
