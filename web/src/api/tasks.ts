@@ -17,7 +17,7 @@ export interface Task {
 }
 
 export const tasksApi = {
-  inbox: () => request<Task[]>("GET", "/api/inbox"),
+  inbox: () => request<Task[]>("GET", "/api/views/inbox"),
   create: (title: string, description: string) =>
     request<Task>("POST", "/api/tasks", { title, description }),
   edit: (id: number, changes: { title?: string; description?: string }) =>

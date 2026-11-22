@@ -26,11 +26,13 @@ func New(st *store.Store, static fs.FS) http.Handler {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", health)
-	mux.HandleFunc("GET /api/inbox", a.listInbox)
+	mux.HandleFunc("GET /api/views/{view}", a.listView)
 	mux.HandleFunc("POST /api/tasks", a.createTask)
 	mux.HandleFunc("PATCH /api/tasks/{id}", a.editTask)
 	mux.HandleFunc("POST /api/tasks/{id}/complete", a.completeTask)
+	mux.HandleFunc("POST /api/tasks/{id}/drop", a.dropTask)
 	mux.HandleFunc("POST /api/tasks/{id}/reopen", a.reopenTask)
+	mux.HandleFunc("POST /api/tasks/{id}/move", a.moveTask)
 	mux.Handle("/api/", http.NotFoundHandler())
 	mux.Handle("/", spa(static))
 	return mux
@@ -40,8 +42,26 @@ func health(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (a *api) listInbox(w http.ResponseWriter, r *http.Request) {
-	tasks, err := a.store.ListOpen(r.Context(), domain.ListInbox)
+// listView returns the tasks in a view: one of the four lists, or Completed
+// or Dropped.
+func (a *api) listView(w http.ResponseWriter, r *http.Request) {
+	var (
+		tasks []domain.Task
+		err   error
+	)
+	switch view := r.PathValue("view"); view {
+	case "completed":
+		tasks, err = a.store.ListCompleted(r.Context())
+	case "dropped":
+		tasks, err = a.store.ListDropped(r.Context())
+	default:
+		list, parseErr := domain.ParseList(view)
+		if parseErr != nil {
+			writeError(w, store.ErrNotFound)
+			return
+		}
+		tasks, err = a.store.ListOpen(r.Context(), list)
+	}
 	if err != nil {
 		writeError(w, err)
 		return
@@ -98,6 +118,27 @@ func (a *api) completeTask(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *api) dropTask(w http.ResponseWriter, r *http.Request) {
+	a.updateTask(w, r, func(t *domain.Task) error {
+		t.Drop(time.Now())
+		return nil
+	})
+}
+
+func (a *api) moveTask(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		List domain.List `json:"list"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+
+	a.updateTask(w, r, func(t *domain.Task) error {
+		return t.Move(req.List, time.Now())
+	})
+}
+
+// reopenTask reopens a done task or restores a dropped one.
 func (a *api) reopenTask(w http.ResponseWriter, r *http.Request) {
 	a.updateTask(w, r, func(t *domain.Task) error {
 		t.Reopen(time.Now())
@@ -144,7 +185,7 @@ type errorBody struct {
 // writeError maps domain and store errors to HTTP responses.
 func writeError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, domain.ErrTitleRequired):
+	case errors.Is(err, domain.ErrTitleRequired), errors.Is(err, domain.ErrInvalidList):
 		writeJSON(w, http.StatusBadRequest, errorBody{err.Error()})
 	case errors.Is(err, store.ErrNotFound):
 		writeJSON(w, http.StatusNotFound, errorBody{err.Error()})
