@@ -72,3 +72,26 @@ Choices that would be expensive to reverse. Never rewrite an entry; add a new on
 **Decision:** `typescript` is pinned to `~6.0.3`, down from 7.0.2.
 **Why:** typescript-eslint supports only TypeScript below 6.1, with no release for 7 yet. The language is the same; 7 is mainly a faster compiler.
 **Revisit when:** typescript-eslint supports TypeScript 7.
+
+## 2026-11-22: A task's list is separate from its status
+**Decision:** Each task has a `list` (`inbox`, `next`, `waiting` or `someday`, enforced by a CHECK) as well as its `status`. Open tasks appear in their list's view; Completed and Dropped come from `status`, so they aren't lists. Done and dropped tasks are frozen: completing, dropping and moving them does nothing until they're reopened, which returns them to the list they kept. The rules are `Complete`, `Drop`, `Reopen` and `Move` in `internal/domain`.
+**Why:** A task can't be in two places, and reopening needs to know where it came from. Freezing done and dropped tasks means there's only one way back, so no combination of status and list needs special handling.
+**Alternatives:** One column for both, with `completed` and `dropped` as places. Reopening would then lose the task's list.
+
+## 2026-11-22: Completed and Dropped show the newest first
+**Decision:** Supersedes the ordering part of "Task list filters and ordering live in SQL". The four views of open tasks still use the shared `taskOrder`. Completed is ordered by `completed_at` and Dropped by `updated_at`, both newest first, with `id` as the tie-break.
+**Why:** In these views you're looking for something you just finished or binned. Dropped has no `dropped_at`, so editing a dropped task moves it to the top; that's acceptable.
+**Revisit if:** Dropped needs a stable order, which would mean adding `dropped_at`.
+
+## 2026-11-22: Client-side routing without a library
+**Decision:** Each view has a path (`/inbox`, `/next` and so on). `useRoute` in `web/src/hooks` wraps `history.pushState` and `popstate`, and `App` maps the path to a view using the table in `features/views/views.ts`. `/` and unknown paths go to `/inbox`. The server already serves `index.html` for any path that isn't a file.
+**Why:** Six flat paths need about 30 lines, not a dependency.
+**Revisit if:** nested routes arrive, for example with projects in 001e.
+
+## 2026-11-22: Task changes wait for the server
+**Decision:** Completing, dropping, reopening and moving a task send the request and then show the task the server returns. 001a updated the row before the server replied. A moved task leaves the view when its returned list no longer matches the view's. While a change is in flight, further changes to that task are ignored.
+**Why:** Whether a change does anything depends on the task's status, and that rule lives in the domain. Guessing in the UI would copy it there. On a VPN the delay isn't noticeable.
+**Alternatives:** Optimistic updates with the rules copied to the UI.
+
+## 2026-11-22: The timezone setting moves to 001d
+**Decision:** Updates "How dates and times work", which said the timezone would be decided in 001b. 001b shows no dates, so `TZ` is decided in 001d, with Today and Upcoming.
