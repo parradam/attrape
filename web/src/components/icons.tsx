@@ -135,3 +135,11 @@ export function ChevronDownIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+export function DashIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" className={className}>
+      <path d="M4.5 8h7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}

@@ -9,6 +9,8 @@ type Props = {
   task: Task;
   selected: boolean;
   editing: boolean;
+  // listLabel names the task's list, in views that mix lists.
+  listLabel?: string;
   onSelect: () => void;
   onToggle: () => void;
   onOpen: () => void;
@@ -17,18 +19,19 @@ type Props = {
 };
 
 // TaskRow is one task in a list. Opening it expands it into an editing card.
-// On touch screens a tap opens it and a swipe right completes or reopens it.
+// On touch screens a tap opens it and a swipe right does what the checkbox
+// does: complete an open task, or reopen or restore a done or dropped one.
 export function TaskRow({
   task,
   selected,
   editing,
+  listLabel,
   onSelect,
   onToggle,
   onOpen,
   onSave,
   onClose,
 }: Props) {
-  const done = task.status === "done";
   const ref = useRef<HTMLLIElement>(null);
   const { offset, handlers } = useSwipe({ onSwipe: onToggle, onTap: onOpen });
 
@@ -62,18 +65,21 @@ export function TaskRow({
         } ${offset === 0 ? "transition-transform" : ""}`}
         style={{ transform: `translateX(${offset}px)` }}
       >
-        <Checkbox checked={done} label={`Complete “${task.title}”`} onToggle={onToggle} />
+        <Checkbox status={task.status} title={task.title} onToggle={onToggle} />
         <span
-          className={`min-w-0 flex-1 truncate text-[15px] transition-colors ${
-            done ? "text-muted line-through" : ""
-          }`}
+          className={`min-w-0 flex-1 truncate text-[15px] transition-colors ${titleStyles[task.status]}`}
         >
           {task.title}
         </span>
+        {listLabel && <span className="shrink-0 text-xs text-muted">{listLabel}</span>}
       </div>
     </li>
   );
 }
+
+// Until reload, a done task is muted and struck through and a dropped one
+// is muted.
+const titleStyles = { open: "", done: "text-muted line-through", dropped: "text-muted" };
 
 type EditorProps = Pick<Props, "task" | "onToggle" | "onSave" | "onClose">;
 
@@ -117,11 +123,7 @@ function TaskEditor({ task, onToggle, onSave, onClose }: EditorProps) {
       className="my-3 rounded-card bg-surface px-3 pt-3 pb-4 shadow-card"
     >
       <div className="flex items-center gap-3">
-        <Checkbox
-          checked={task.status === "done"}
-          label={`Complete “${task.title}”`}
-          onToggle={onToggle}
-        />
+        <Checkbox status={task.status} title={task.title} onToggle={onToggle} />
         <input
           autoFocus
           aria-label="Title"
