@@ -192,9 +192,12 @@ function TaskEditor({
         </p>
       )}
       {/* On mobile, where there are no keys, buttons move, drop and reopen. */}
-      <div className="mt-3 flex flex-wrap items-center gap-1.5 pl-7.5 md:hidden">
+      <div className="mt-3 pl-7.5 md:hidden">
         {task.status === "open" ? (
           <>
+            <p aria-hidden="true" className="mb-1.5 text-xs text-muted">
+              Move to
+            </p>
             <div role="group" aria-label="Move to" className="flex flex-wrap gap-1.5">
               {lists.map(({ list, title }) => (
                 <ActionButton
@@ -206,7 +209,9 @@ function TaskEditor({
                 </ActionButton>
               ))}
             </div>
-            <ActionButton onClick={() => void act(onDrop)}>Drop</ActionButton>
+            <ActionButton plain onClick={() => void act(onDrop)}>
+              Drop
+            </ActionButton>
           </>
         ) : (
           <ActionButton onClick={() => void act(onReopen)}>
@@ -220,11 +225,13 @@ function TaskEditor({
 
 type ActionButtonProps = {
   pressed?: boolean;
+  // plain is a quieter text button, set apart from the list buttons.
+  plain?: boolean;
   onClick: () => void;
   children: string;
 };
 
-function ActionButton({ pressed, onClick, children }: ActionButtonProps) {
+function ActionButton({ pressed, plain, onClick, children }: ActionButtonProps) {
   return (
     <button
       type="button"
@@ -232,7 +239,11 @@ function ActionButton({ pressed, onClick, children }: ActionButtonProps) {
       // Keep focus in the card, so the press doesn't also save it on blur.
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
-      className="rounded-full border border-line px-3 py-1 text-sm text-ink/80 aria-pressed:border-accent aria-pressed:bg-accent-soft aria-pressed:text-accent"
+      className={
+        plain
+          ? "mt-3 -ml-1 rounded-row p-1 text-sm text-muted"
+          : "rounded-full border border-line px-3 py-1 text-sm text-ink/80 aria-pressed:border-accent aria-pressed:bg-accent-soft aria-pressed:text-accent"
+      }
     >
       {children}
     </button>
